@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useState, useEffect } from 'react';
+import React, { Suspense, useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from "react-hot-toast";
 import { MdSend, MdDownload, MdCode, MdClose, MdImage, MdVideoFile, MdPictureAsPdf, MdTextFields, MdAttachFile } from "react-icons/md";
@@ -8,6 +8,14 @@ import { useTheme } from "../../contexts/ThemeContext";
 import CodeHighlighter from "../../components/CodeHighlighter";
 
 export default function JoinPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-2 border-lime-400 border-t-transparent"></div></div>}>
+            <JoinPageContent />
+        </Suspense>
+    );
+}
+
+function JoinPageContent() {
     const { isDark } = useTheme();
     const searchParams = useSearchParams();
     const [sessionKey, setSessionKey] = useState("");
@@ -602,21 +610,21 @@ export default function JoinPage() {
                 {/* Code Modal */}
                 {showCodeModal && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                        <div className={`w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl ${colors.surface} ${colors.border} border backdrop-blur-md ${colors.glow} shadow-2xl overflow-hidden`}>
+                        <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md shadow-2xl overflow-hidden">
                             {/* Header */}
-                            <div className={`flex items-center justify-between p-6 ${colors.surface} ${colors.border} border-b`}>
+                            <div className="flex items-center justify-between p-6 bg-gray-900 bg-opacity-50 border-gray-800 border-b">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500">
                                         <MdCode className="text-2xl text-white" />
                                     </div>
                                     <div>
-                                        <h3 className={`text-2xl font-bold ${colors.text}`}>Share Code Snippet</h3>
-                                        <p className={`${colors.textSecondary} text-sm`}>Write and share code with syntax highlighting</p>
+                                        <h3 className="text-2xl font-bold text-white">Share Code Snippet</h3>
+                                        <p className="text-gray-400 text-sm">Write and share code with syntax highlighting</p>
                                     </div>
                                 </div>
                                 <button
                                     onClick={() => setShowCodeModal(false)}
-                                    className={`p-3 rounded-xl ${colors.surfaceHover} ${colors.text} transition-colors hover:${colors.surface}`}
+                                    className="p-3 rounded-xl hover:bg-gray-800 text-white transition-colors"
                                 >
                                     <MdClose className="text-2xl" />
                                 </button>
@@ -627,13 +635,13 @@ export default function JoinPage() {
                                 <div className="space-y-6">
                                     {/* Language Selector */}
                                     <div>
-                                        <label className={`block text-sm font-semibold ${colors.text} mb-3`}>
+                                        <label className="block text-sm font-semibold text-white mb-3">
                                             Programming Language
                                         </label>
                                         <select
                                             value={codeLanguage}
                                             onChange={(e) => setCodeLanguage(e.target.value)}
-                                            className={`w-full p-4 rounded-xl ${colors.surface} ${colors.border} border ${colors.text} focus:outline-none focus:border-lime-400 transition-all duration-300`}
+                                            className="w-full p-4 rounded-xl bg-gray-800 bg-opacity-50 border-gray-700 border text-white focus:outline-none focus:border-lime-400 transition-all duration-300"
                                         >
                                             <option value="javascript">JavaScript</option>
                                             <option value="python">Python</option>
@@ -650,7 +658,7 @@ export default function JoinPage() {
 
                                     {/* Code Input */}
                                     <div>
-                                        <label className={`block text-sm font-semibold ${colors.text} mb-3`}>
+                                        <label className="block text-sm font-semibold text-white mb-3">
                                             Code Content
                                         </label>
                                         <textarea
@@ -658,17 +666,17 @@ export default function JoinPage() {
                                             value={codeInput}
                                             onChange={(e) => setCodeInput(e.target.value)}
                                             placeholder={`Enter your ${codeLanguage} code here...`}
-                                            className={`w-full h-64 p-4 rounded-xl ${colors.surface} ${colors.border} border ${colors.text} placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300 font-mono text-sm resize-none`}
+                                            className="w-full h-64 p-4 rounded-xl bg-gray-800 bg-opacity-50 border-gray-700 border text-white placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300 font-mono text-sm resize-none"
                                         />
                                     </div>
 
                                     {/* Preview */}
                                     {codeInput && (
                                         <div>
-                                            <label className={`block text-sm font-semibold ${colors.text} mb-3`}>
+                                            <label className="block text-sm font-semibold text-white mb-3">
                                                 Preview
                                             </label>
-                                            <div className={`p-4 rounded-xl ${colors.surface} ${colors.border} border overflow-x-auto`}>
+                                            <div className="p-4 rounded-xl bg-gray-800 bg-opacity-50 border-gray-700 border overflow-x-auto">
                                                 <CodeHighlighter
                                                     code={codeInput}
                                                     language={codeLanguage}
@@ -680,10 +688,10 @@ export default function JoinPage() {
                             </div>
 
                             {/* Footer */}
-                            <div className={`flex items-center justify-end gap-4 p-6 ${colors.surface} ${colors.border} border-t`}>
+                            <div className="flex items-center justify-end gap-4 p-6 bg-gray-900 bg-opacity-50 border-gray-800 border-t">
                                 <button
                                     onClick={() => setShowCodeModal(false)}
-                                    className={`px-6 py-3 ${colors.surfaceHover} ${colors.text} rounded-xl font-semibold transition-colors hover:${colors.surface} ${colors.border} border`}
+                                    className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-semibold transition-colors border border-gray-700"
                                 >
                                     Cancel
                                 </button>
