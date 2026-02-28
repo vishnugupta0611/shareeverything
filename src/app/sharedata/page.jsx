@@ -1,5 +1,5 @@
 "use client";
-import React, { useRef, useState, useEffect } from 'react';
+import React, { Suspense, useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from "react-hot-toast";
 import { MdSend, MdDownload, MdCode, MdClose, MdImage, MdVideoFile, MdPictureAsPdf, MdTextFields } from "react-icons/md";
@@ -8,6 +8,14 @@ import { useTheme } from "../../contexts/ThemeContext";
 import CodeHighlighter from "../../components/CodeHighlighter";
 
 export default function ShareDataPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-2 border-lime-400 border-t-transparent"></div></div>}>
+            <ShareDataPageContent />
+        </Suspense>
+    );
+}
+
+function ShareDataPageContent() {
     const { isDark } = useTheme();
     const searchParams = useSearchParams();
     const [sessionKey, setSessionKey] = useState("");
