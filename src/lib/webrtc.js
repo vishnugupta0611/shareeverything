@@ -1,4 +1,6 @@
 // Simple WebRTC P2P Connection Manager
+const URL="https://sendanything.onrender.com"
+
 export class P2PConnection {
     constructor() {
         this.peerConnection = null;
@@ -486,7 +488,7 @@ export function generateSessionKey() {
 // Simple Backend API Client
 export class BackendAPI {
     constructor() {
-        this.baseURL = 'http://localhost:4000/api';
+        this.baseURL = URL+"/api";
     }
 
     // Create new session
@@ -565,7 +567,7 @@ export class SocketSignaling {
             try {
                 // Import socket.io-client dynamically
                 import('socket.io-client').then(({ io }) => {
-                    this.socket = io('http://localhost:4000');
+                    this.socket = io(URL);
 
                     this.socket.on('connect', () => {
                         console.log('Connected to signaling server');

@@ -82,21 +82,21 @@ export default function CreatePage() {
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-black' : 'bg-white'} ${isDark ? 'text-white' : 'text-gray-900'} transition-all duration-500`}>
-      <div className="container mx-auto px-6 py-12 max-w-6xl">
+      <div className="container mx-auto px-6 lg:py-2 md:p-2 p-6 max-w-6xl">
         
         {/* Header */}
-        <div className="text-center mb-16 pt-8">
+        <div className="text-center mb-4 pt-8">
           <h1 className={`text-5xl md:text-6xl lg:text-7xl font-black mb-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
             Create Session
           </h1>
-          <p className={`text-xl md:text-2xl ${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-3xl mx-auto leading-relaxed`}>
+          {/* <p className={`text-xl md:text-2xl ${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-3xl mx-auto leading-relaxed`}>
             Generate a secure session key and start sharing files instantly
-          </p>
+          </p> */}
         </div>
 
         {!sessionKey ? (
           /* Auto-generating Session UI */
-          <div className="flex flex-col items-center gap-12">
+          <div className="flex flex-col items-center gap-2">
             <div className="flex flex-col items-center gap-6">
               <div className="animate-spin rounded-full h-16 w-16 border-4 border-lime-400 border-t-transparent"></div>
               <h2 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -114,7 +114,7 @@ export default function CreatePage() {
               <div className="grid lg:grid-cols-2 gap-8 items-center">
                 
                 {/* Session Key Display */}
-                <div>
+                <div className="order-last">
                   <h3 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-4`}>Your Session Key</h3>
                   <div className={`flex items-center gap-4 p-4 rounded-xl ${isDark ? 'bg-gray-800/50' : 'bg-white/50'} ${isDark ? 'border-gray-700' : 'border-gray-300'} border`}>
                     <span className={`text-2xl md:text-3xl font-mono font-black text-lime-400 tracking-wider`}>
@@ -128,9 +128,7 @@ export default function CreatePage() {
                     </button>
                   </div>
                   
-                  <div className="mt-6 p-4 rounded-xl bg-lime-400/10 border border-lime-400/20">
-                    <p className="text-lime-400 font-medium">✨ Redirecting to sharing page in 2 seconds...</p>
-                  </div>
+                 
                 </div>
 
                 {/* QR Code Display */}

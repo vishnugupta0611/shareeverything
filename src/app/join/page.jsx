@@ -2,7 +2,7 @@
 import React, { Suspense, useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import toast from "react-hot-toast";
-import { MdSend, MdDownload, MdCode, MdClose, MdImage, MdVideoFile, MdPictureAsPdf, MdTextFields, MdAttachFile } from "react-icons/md";
+import { MdSend, MdDownload, MdCode, MdClose, MdImage, MdVideoFile, MdPictureAsPdf, MdTextFields, MdAttachFile, MdQrCodeScanner } from "react-icons/md";
 import { P2PConnection, BackendAPI, SocketSignaling } from "../../lib/webrtc";
 import { useTheme } from "../../contexts/ThemeContext";
 import CodeHighlighter from "../../components/CodeHighlighter";
@@ -31,8 +31,11 @@ function JoinPageContent() {
     const [isJoined, setIsJoined] = useState(false);
     const [showCodeModal, setShowCodeModal] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [showScanner, setShowScanner] = useState(false);
+    const [scannerStatus, setScannerStatus] = useState('idle'); // idle, loading, scanning, error, permission_denied
 
     const idRef = useRef(null);
+    const scannerRef = useRef(null);
     const codeInputRef = useRef(null);
 
     // Combined items for display
@@ -73,6 +76,106 @@ function JoinPageContent() {
             }, 500);
         }
     }, [searchParams]);
+
+    // Stop and cleanup scanner
+    const stopScanner = React.useCallback(async () => {
+        if (scannerRef.current) {
+            try {
+                const state = scannerRef.current.getState();
+                if (state === 2) { // SCANNING
+                    await scannerRef.current.stop();
+                }
+            } catch (e) {
+                // ignore cleanup errors
+            }
+            scannerRef.current = null;
+        }
+        setShowScanner(false);
+        setScannerStatus('idle');
+    }, []);
+
+    // Start scanner
+    const startScanner = React.useCallback(async () => {
+        setShowScanner(true);
+        setScannerStatus('loading');
+
+        try {
+            const { Html5Qrcode } = await import('html5-qrcode');
+
+            // Wait for DOM
+            await new Promise(r => setTimeout(r, 200));
+
+            const scannerEl = document.getElementById('qr-scanner-video');
+            if (!scannerEl) {
+                setScannerStatus('error');
+                return;
+            }
+
+            const html5Qrcode = new Html5Qrcode('qr-scanner-video');
+            scannerRef.current = html5Qrcode;
+
+            setScannerStatus('scanning');
+
+            await html5Qrcode.start(
+                { facingMode: 'environment' },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 },
+                    aspectRatio: 1.0,
+                },
+                (decodedText) => {
+                    // Extract key from URL or use raw text
+                    let key = decodedText;
+                    try {
+                        const url = new URL(decodedText);
+                        const keyParam = url.searchParams.get('key');
+                        if (keyParam) key = keyParam;
+                    } catch {
+                        // Not a URL, use as-is
+                    }
+
+                    key = key.trim().toUpperCase();
+                    if (idRef.current) {
+                        idRef.current.value = key;
+                    }
+
+                    toast.success(`🎯 QR Code scanned: ${key}`);
+
+                    // Stop scanner and close modal
+                    html5Qrcode.stop().then(() => {
+                        scannerRef.current = null;
+                        setShowScanner(false);
+                        setScannerStatus('idle');
+
+                        // Auto-join after closing
+                        setTimeout(() => joinSession(), 300);
+                    }).catch(() => {});
+                },
+                () => {
+                    // Scan in progress, not an error
+                }
+            );
+        } catch (error) {
+            console.error('Scanner error:', error);
+            if (error?.message?.includes('Permission') || error?.name === 'NotAllowedError') {
+                setScannerStatus('permission_denied');
+            } else {
+                setScannerStatus('error');
+            }
+        }
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (scannerRef.current) {
+                try {
+                    scannerRef.current.stop().catch(() => {});
+                } catch {}
+                scannerRef.current = null;
+            }
+        };
+    }, []);
 
     if (!mounted) return null;
 
@@ -278,101 +381,150 @@ function JoinPageContent() {
 
 
     return (
-        <div className={`min-h-screen ${isDark ? 'bg-black' : 'bg-white'} ${isDark ? 'text-white' : 'text-gray-900'} transition-all duration-500`}>
-            <div className="container mx-auto px-6 py-12 max-w-6xl">
+        <div className={`min-h-screen ${isDark ? 'bg-black' : 'bg-white'} ${isDark ? 'text-white' : 'text-gray-900'} transition-all duration-500 overflow-x-hidden`}>
+            <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-12 max-w-6xl">
 
-                {!isJoined ? (
-                    /* Join Session UI */
-                    <div className="flex flex-col items-center justify-center min-h-screen">
-                        {/* Header */}
-                        <div className="text-center mb-16">
-                            <h1 className={`text-5xl md:text-6xl lg:text-7xl font-black mb-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                                Join Session
-                            </h1>
-                            <p className={`text-xl md:text-2xl ${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-3xl mx-auto leading-relaxed`}>
-                                Enter the session key to connect and start receiving files instantly with{" "}
-                                <span className="text-lime-400 font-semibold">zero servers</span>
-                                , peer-to-peer connections, and military-grade security.
-                            </p>
+                {!isJoined ? (/* Professional Join Session UI */
+<div className="flex flex-col items-center justify-center min-h-screen px-4 lg:py-0 md:py-0 py-8">
+    {/* Professional Header */}
+    <div className="text-center mb-8 sm:mb-12 max-w-2xl">
+        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-lime-400/10 border border-lime-400/20 mb-6">
+            <div className="w-2 h-2 bg-lime-400 rounded-full animate-pulse"></div>
+            <span className="text-lime-400 text-sm font-medium">Secure P2P Transfer</span>
+        </div>
+        
+        <h1 className={`text-3xl sm:text-5xl md:text-6xl font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'} tracking-tight`}>
+            Join Session
+        </h1>
+        
+        <p className={`text-base sm:text-lg ${isDark ? 'text-gray-400' : 'text-gray-600'} leading-relaxed`}>
+            Connect securely with enterprise-grade encryption
+        </p>
+    </div>
+
+    {/* Main Card */}
+    <div className="w-full max-w-md">
+        {/* Primary Action: QR Scanner */}
+        <div className="mb-4">
+            <button
+                onClick={startScanner}
+                className="group w-full relative overflow-hidden p-6 rounded-2xl bg-gradient-to-br from-lime-400 to-green-500 hover:from-lime-300 hover:to-green-400 transition-all duration-300 hover:shadow-2xl hover:shadow-lime-400/30 hover:scale-[1.02]"
+            >
+                <div className="relative z-10 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-xl bg-black/10 backdrop-blur-sm">
+                            <MdQrCodeScanner className="text-3xl text-black" />
                         </div>
-
-                        {/* Join Form */}
-                        <div className={`w-full max-w-md p-8 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md transition-all duration-300`}>
-                            <div className="space-y-6">
-                                <div>
-                                    <label className={`block text-sm font-medium text-gray-400 mb-3`}>
-                                        Session Key
-                                    </label>
-                                    <input
-                                        ref={idRef}
-                                        type="text"
-                                        placeholder="Enter 6-digit key (e.g. ABC123)"
-                                        className={`w-full p-4 rounded-xl bg-gray-800 bg-opacity-50 border-gray-700 text-white border placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300 text-center text-lg font-mono tracking-wider uppercase`}
-                                        onKeyPress={(e) => e.key === 'Enter' && joinSession()}
-                                        maxLength={6}
-                                    />
-                                </div>
-
-                                <button
-                                    onClick={joinSession}
-                                    disabled={connectionStatus === 'connecting'}
-                                    className="w-full py-4 bg-lime-400 text-black rounded-full shadow-xl transition-all duration-300 hover:scale-105 hover:bg-lime-300 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <span className="flex items-center justify-center gap-3">
-                                        {connectionStatus === 'connecting' ? (
-                                            <>
-                                                <div className="animate-spin rounded-full h-5 w-5 border-2 border-black border-t-transparent"></div>
-                                                Connecting...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span className="text-2xl">🔗</span>
-                                                Join Session
-                                            </>
-                                        )}
-                                    </span>
-                                </button>
-
-                                <div className={`text-center text-gray-400 text-sm`}>
-                                    <div className="flex items-center justify-center gap-2 mb-2">
-                                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                                        <span>Secure P2P Connection</span>
-                                    </div>
-                                    <p>No account required • End-to-end encrypted</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Features */}
-                        <div className="grid md:grid-cols-3 gap-6 mt-16 max-w-4xl">
-                            {[
-                                { icon: "🔒", title: "Secure Transfer", desc: "Direct peer-to-peer encryption" },
-                                { icon: "⚡", title: "Instant Connection", desc: "Connect in seconds with just a key" },
-                                { icon: "📱", title: "Any Device", desc: "Works on mobile, tablet, and desktop" }
-                            ].map((feature, index) => (
-                                <div
-                                    key={index}
-                                    className={`text-center p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md transition-all duration-300 hover:scale-105`}
-                                >
-                                    <div className="text-3xl mb-3">{feature.icon}</div>
-                                    <h3 className={`font-bold text-white mb-2`}>{feature.title}</h3>
-                                    <p className={`text-sm text-gray-400`}>{feature.desc}</p>
-                                </div>
-                            ))}
+                        <div className="text-left">
+                            <div className="text-black font-bold text-lg mb-0.5">Scan QR Code</div>
+                            <div className="text-black/70 text-sm font-medium">Fastest connection method</div>
                         </div>
                     </div>
-                ) : (
+                    <div className="text-black/50">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                        </svg>
+                    </div>
+                </div>
+                
+                {/* Shimmer effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+            </button>
+        </div>
+
+        {/* Divider */}
+        <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-700/50"></div>
+            </div>
+            <div className="relative flex justify-center">
+                <span className="px-4 text-sm text-gray-500 bg-black">or enter manually</span>
+            </div>
+        </div>
+
+        {/* Manual Input Card */}
+        <div className="p-6 sm:p-8 rounded-2xl bg-gray-900/50 border border-gray-800/50 backdrop-blur-xl shadow-xl">
+            <div className="space-y-5">
+                {/* Input Label */}
+                <div>
+                    <label className="block text-sm font-semibold text-gray-300 mb-3">
+                        Session Code
+                    </label>
+                    <div className="relative">
+                        <input
+                            ref={idRef}
+                            type="text"
+                            placeholder="ABC123"
+                            className="w-full px-4 py-4 rounded-xl bg-gray-800/50 border-2 border-gray-700/50 text-white text-center text-xl font-mono font-bold tracking-[0.3em] uppercase placeholder:text-gray-600 placeholder:tracking-normal focus:outline-none focus:border-lime-400/50 focus:bg-gray-800/80 transition-all duration-300"
+                            onKeyPress={(e) => e.key === 'Enter' && joinSession()}
+                            maxLength={6}
+                            autoComplete="off"
+                        />
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 text-xs font-medium">
+                            6 digits
+                        </div>
+                    </div>
+                </div>
+
+                {/* Join Button */}
+                <button
+                    onClick={joinSession}
+                    disabled={connectionStatus === 'connecting'}
+                    className="w-full py-4 rounded-xl bg-gray-800 hover:bg-gray-750 border border-gray-700 text-white font-semibold text-base transition-all duration-300 hover:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gray-800 group"
+                >
+                    {connectionStatus === 'connecting' ? (
+                        <span className="flex items-center justify-center gap-3">
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-400 border-t-transparent"></div>
+                            <span>Connecting...</span>
+                        </span>
+                    ) : (
+                        <span className="flex items-center justify-center gap-2 group-hover:gap-3 transition-all">
+                            <span>Join Session</span>
+                            <svg className="w-5 h-5 opacity-50 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                        </span>
+                    )}
+                </button>
+            </div>
+        </div>
+
+        {/* Security Features */}
+        <div className="mt-8 space-y-3">
+            {[
+                { icon: "🔒", text: "End-to-end encryption" },
+                { icon: "⚡", text: "Direct peer-to-peer connection" },
+                { icon: "🚫", text: "No data stored on servers" }
+            ].map((feature, index) => (
+                <div
+                    key={index}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-900/30 border border-gray-800/30 backdrop-blur-sm"
+                >
+                    <span className="text-lg flex-shrink-0">{feature.icon}</span>
+                    <span className="text-sm text-gray-400 font-medium">{feature.text}</span>
+                </div>
+            ))}
+        </div>
+    </div>
+
+    {/* Footer Info */}
+    <div className="mt-12 text-center">
+        <p className="text-xs text-gray-500">
+            No account required • Session expires after disconnection
+        </p>
+    </div>
+</div>) : (
                     /* Connected Session UI - Fixed Layout */
                     <div className="space-y-6">
                         {/* Session Info Panel */}
-                        <div className={`p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md transition-all duration-300`}>
-                            <div className="flex items-center justify-between">
+                        <div className={`p-4 sm:p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md transition-all duration-300`}>
+                            <div className="flex items-center justify-between flex-wrap gap-2">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-lime-400 flex items-center justify-center">
-                                        <span className="text-black font-bold text-sm">{sessionKey}</span>
+                                    <div className="px-3 py-1.5 rounded-full bg-lime-400 flex items-center justify-center">
+                                        <span className="text-black font-bold text-xs sm:text-sm font-mono">{sessionKey}</span>
                                     </div>
                                     <div>
-                                        <h3 className={`text-lg font-bold text-white`}>
+                                        <h3 className={`text-base sm:text-lg font-bold text-white`}>
                                             Connected to Session
                                         </h3>
                                         <div className="flex items-center gap-2">
@@ -388,9 +540,9 @@ function JoinPageContent() {
 
                         {/* File Sharing Grid */}
                         {connectionStatus === 'connected' && (
-                            <div className={`p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border mb-6`}>
-                                <h3 className="text-2xl font-bold text-white text-center mb-6">Share Files</h3>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className={`p-4 sm:p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border mb-4 sm:mb-6`}>
+                                <h3 className="text-xl sm:text-2xl font-bold text-white text-center mb-4 sm:mb-6">Share Files</h3>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                                     <div onClick={() => document.getElementById('image-input').click()} className="p-4 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 cursor-pointer transition-all duration-300 hover:scale-105">
                                         <div className="flex flex-col items-center gap-3">
                                             <div className="p-3 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500">
@@ -435,7 +587,7 @@ function JoinPageContent() {
                         )}
 
                         {/* Content Feed - Fixed Height, No Bento Rerendering */}
-                        <div className={`h-[65vh] overflow-y-auto p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border`}>
+                        <div className={`h-[50vh] sm:h-[65vh] overflow-y-auto p-3 sm:p-6 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border`}>
                             {allItems.length === 0 ? (
                                 <div className={`h-full flex items-center justify-center text-gray-400`}>
                                     <div className="text-center">
@@ -447,9 +599,9 @@ function JoinPageContent() {
                             ) : (
                                 <div className="space-y-4">
                                     {allItems.map((item, index) => (
-                                        <div key={`${item.timestamp}-${index}`} className={`p-4 rounded-xl bg-gray-800 bg-opacity-60 backdrop-blur-sm shadow-lg border border-gray-700 border-opacity-30 group hover:scale-[1.01] transition-all duration-300`}>
+                                        <div key={`${item.timestamp}-${index}`} className={`p-3 sm:p-4 rounded-xl bg-gray-800 bg-opacity-60 backdrop-blur-sm shadow-lg border border-gray-700 border-opacity-30 group hover:scale-[1.01] transition-all duration-300`}>
                                             {item.messageType === 'file' ? (
-                                                <div className="flex items-start gap-4">
+                                                <div className="flex items-start gap-2 sm:gap-4">
                                                     <button
                                                         onClick={() => downloadFile(item)}
                                                         className="flex-shrink-0 p-2 bg-lime-400 hover:bg-lime-300 text-black rounded-full transition-all duration-300 shadow-lg"
@@ -556,26 +708,26 @@ function JoinPageContent() {
                         </div>
 
                         {/* Message Input */}
-                        <div className={`p-4 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border`}>
-                            <div className="flex gap-3">
+                        <div className={`p-3 sm:p-4 rounded-2xl bg-gray-900 bg-opacity-50 border-gray-800 border`}>
+                            <div className="flex gap-2 sm:gap-3">
                                 <input
                                     type="text"
                                     value={messageInput}
                                     onChange={(e) => setMessageInput(e.target.value)}
                                     onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
                                     placeholder="Type a message..."
-                                    className={`flex-1 p-4 rounded-full bg-gray-800 bg-opacity-50 border-gray-700 text-white border placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300`}
+                                    className={`flex-1 min-w-0 p-3 sm:p-4 rounded-full bg-gray-800 bg-opacity-50 border-gray-700 text-white border placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300 text-sm sm:text-base`}
                                 />
                                 <button
                                     onClick={sendMessage}
                                     disabled={!messageInput.trim()}
-                                    className="px-6 py-4 bg-lime-400 text-black rounded-full transition-all duration-300 hover:scale-105 hover:bg-lime-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-4 sm:px-6 py-3 sm:py-4 bg-lime-400 text-black rounded-full transition-all duration-300 hover:scale-105 hover:bg-lime-300 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                                 >
                                     <MdSend className="text-lg" />
                                 </button>
                                 <button
                                     onClick={() => setShowCodeModal(true)}
-                                    className="px-6 py-4 bg-purple-500 text-white rounded-full transition-all duration-300 hover:scale-105 hover:bg-purple-400"
+                                    className="px-4 sm:px-6 py-3 sm:py-4 bg-purple-500 text-white rounded-full transition-all duration-300 hover:scale-105 hover:bg-purple-400 flex-shrink-0"
                                 >
                                     <MdCode className="text-lg" />
                                 </button>
@@ -586,15 +738,15 @@ function JoinPageContent() {
 
                 {/* Transfer Progress */}
                 {transferProgress && (
-                    <div className="fixed bottom-6 left-6 z-50">
-                        <div className={`p-4 rounded-2xl bg-gray-900 bg-opacity-90 border-gray-800 border backdrop-blur-md shadow-2xl`}>
-                            <div className="flex items-center gap-3 mb-2">
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-lime-400 border-t-transparent"></div>
-                                <span className={`font-medium text-white`}>
+                    <div className="fixed bottom-4 left-4 right-4 sm:right-auto sm:left-6 sm:bottom-6 z-50">
+                        <div className={`p-3 sm:p-4 rounded-2xl bg-gray-900 bg-opacity-90 border-gray-800 border backdrop-blur-md shadow-2xl`}>
+                            <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-lime-400 border-t-transparent flex-shrink-0"></div>
+                                <span className={`font-medium text-white text-sm sm:text-base truncate`}>
                                     {transferProgress.type === 'sending' ? '📤 Sending' : '📥 Receiving'}: {transferProgress.fileName}
                                 </span>
                             </div>
-                            <div className={`w-64 h-2 rounded-full bg-gray-800 overflow-hidden`}>
+                            <div className={`w-full sm:w-64 h-2 rounded-full bg-gray-800 overflow-hidden`}>
                                 <div
                                     className="h-full bg-lime-400 transition-all duration-300 rounded-full"
                                     style={{ width: `${transferProgress.progress}%` }}
@@ -609,17 +761,17 @@ function JoinPageContent() {
 
                 {/* Code Modal */}
                 {showCodeModal && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-                        <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md shadow-2xl overflow-hidden">
+                    <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+                        <div className="w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] flex flex-col rounded-2xl sm:rounded-3xl bg-gray-900 bg-opacity-50 border-gray-800 border backdrop-blur-md shadow-2xl overflow-hidden">
                             {/* Header */}
-                            <div className="flex items-center justify-between p-6 bg-gray-900 bg-opacity-50 border-gray-800 border-b">
+                            <div className="flex items-center justify-between p-4 sm:p-6 bg-gray-900 bg-opacity-50 border-gray-800 border-b">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500">
                                         <MdCode className="text-2xl text-white" />
                                     </div>
                                     <div>
-                                        <h3 className="text-2xl font-bold text-white">Share Code Snippet</h3>
-                                        <p className="text-gray-400 text-sm">Write and share code with syntax highlighting</p>
+                                        <h3 className="text-lg sm:text-2xl font-bold text-white">Share Code Snippet</h3>
+                                        <p className="text-gray-400 text-xs sm:text-sm hidden sm:block">Write and share code with syntax highlighting</p>
                                     </div>
                                 </div>
                                 <button
@@ -631,7 +783,7 @@ function JoinPageContent() {
                             </div>
 
                             {/* Content */}
-                            <div className="flex-1 overflow-y-auto p-6">
+                            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                                 <div className="space-y-6">
                                     {/* Language Selector */}
                                     <div>
@@ -666,7 +818,7 @@ function JoinPageContent() {
                                             value={codeInput}
                                             onChange={(e) => setCodeInput(e.target.value)}
                                             placeholder={`Enter your ${codeLanguage} code here...`}
-                                            className="w-full h-64 p-4 rounded-xl bg-gray-800 bg-opacity-50 border-gray-700 border text-white placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300 font-mono text-sm resize-none"
+                                            className="w-full h-40 sm:h-64 p-3 sm:p-4 rounded-xl bg-gray-800 bg-opacity-50 border-gray-700 border text-white placeholder-gray-400 focus:outline-none focus:border-lime-400 transition-all duration-300 font-mono text-xs sm:text-sm resize-none"
                                         />
                                     </div>
 
@@ -688,7 +840,7 @@ function JoinPageContent() {
                             </div>
 
                             {/* Footer */}
-                            <div className="flex items-center justify-end gap-4 p-6 bg-gray-900 bg-opacity-50 border-gray-800 border-t">
+                            <div className="flex items-center justify-end gap-3 sm:gap-4 p-4 sm:p-6 bg-gray-900 bg-opacity-50 border-gray-800 border-t">
                                 <button
                                     onClick={() => setShowCodeModal(false)}
                                     className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-semibold transition-colors border border-gray-700"
@@ -709,6 +861,127 @@ function JoinPageContent() {
                         </div>
                     </div>
                 )}
+                {/* QR Scanner Modal */}
+                {showScanner && (
+                    <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center">
+                        {/* Close Button */}
+                        <button
+                            onClick={stopScanner}
+                            className="absolute top-6 right-6 z-10 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all duration-300 backdrop-blur-md border border-white/20"
+                        >
+                            <MdClose className="text-2xl" />
+                        </button>
+
+                        {/* Header */}
+                        <div className="text-center mb-8">
+                            <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-lime-400/10 border border-lime-400/30 mb-4">
+                                <MdQrCodeScanner className="text-lime-400 text-xl" />
+                                <span className="text-lime-400 font-semibold">QR Code Scanner</span>
+                            </div>
+                            <p className="text-gray-400 text-sm">Point your camera at the QR code to scan</p>
+                        </div>
+
+                        {/* Scanner Area */}
+                        <div className="relative w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] md:w-[400px] md:h-[400px] rounded-2xl overflow-hidden border-2 border-lime-400/50 shadow-[0_0_40px_rgba(163,230,53,0.15)]">
+                            {/* Camera Feed */}
+                            <div id="qr-scanner-video" className="w-full h-full"></div>
+
+                            {/* Scanning Overlay - Animated Line */}
+                            {scannerStatus === 'scanning' && (
+                                <div className="absolute inset-0 pointer-events-none">
+                                    {/* Corner markers */}
+                                    <div className="absolute top-4 left-4 w-8 h-8 border-t-3 border-l-3 border-lime-400 rounded-tl-lg" style={{borderWidth: '3px 0 0 3px'}}></div>
+                                    <div className="absolute top-4 right-4 w-8 h-8 border-t-3 border-r-3 border-lime-400 rounded-tr-lg" style={{borderWidth: '3px 3px 0 0'}}></div>
+                                    <div className="absolute bottom-4 left-4 w-8 h-8 border-b-3 border-l-3 border-lime-400 rounded-bl-lg" style={{borderWidth: '0 0 3px 3px'}}></div>
+                                    <div className="absolute bottom-4 right-4 w-8 h-8 border-b-3 border-r-3 border-lime-400 rounded-br-lg" style={{borderWidth: '0 3px 3px 0'}}></div>
+
+                                    {/* Scanning Line Animation */}
+                                    <div className="absolute left-4 right-4 h-0.5 bg-gradient-to-r from-transparent via-lime-400 to-transparent animate-bounce" style={{animation: 'scanLine 2s ease-in-out infinite', top: '50%'}}></div>
+                                </div>
+                            )}
+
+                            {/* Loading State */}
+                            {scannerStatus === 'loading' && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/90">
+                                    <div className="animate-spin rounded-full h-12 w-12 border-3 border-lime-400 border-t-transparent mb-4" style={{borderWidth: '3px'}}></div>
+                                    <p className="text-white font-medium text-lg">Starting Camera...</p>
+                                    <p className="text-gray-400 text-sm mt-2">Please allow camera access when prompted</p>
+                                </div>
+                            )}
+
+                            {/* Permission Denied State */}
+                            {scannerStatus === 'permission_denied' && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95 p-6 text-center">
+                                    <div className="text-5xl mb-4">🚫</div>
+                                    <h3 className="text-white font-bold text-xl mb-2">Camera Access Denied</h3>
+                                    <p className="text-gray-400 text-sm mb-6 max-w-xs">
+                                        Please allow camera access in your browser settings to scan QR codes.
+                                    </p>
+                                    <div className="space-y-3 text-left text-sm text-gray-500 bg-gray-800/50 p-4 rounded-xl border border-gray-700 mb-6">
+                                        <p>📍 Click the 🔒 icon in your address bar</p>
+                                        <p>📍 Find &quot;Camera&quot; and select &quot;Allow&quot;</p>
+                                        <p>📍 Reload the page and try again</p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={stopScanner}
+                                            className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
+                                        >
+                                            Close
+                                        </button>
+                                        <button
+                                            onClick={() => { stopScanner(); setTimeout(startScanner, 300); }}
+                                            className="px-6 py-3 bg-lime-400 text-black rounded-xl font-bold hover:bg-lime-300 transition-colors"
+                                        >
+                                            Try Again
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* General Error State */}
+                            {scannerStatus === 'error' && (
+                                <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/95 p-6 text-center">
+                                    <div className="text-5xl mb-4">⚠️</div>
+                                    <h3 className="text-white font-bold text-xl mb-2">Scanner Error</h3>
+                                    <p className="text-gray-400 text-sm mb-6">
+                                        Could not start the camera. Make sure no other app is using it.
+                                    </p>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={stopScanner}
+                                            className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl font-medium transition-colors"
+                                        >
+                                            Close
+                                        </button>
+                                        <button
+                                            onClick={() => { stopScanner(); setTimeout(startScanner, 300); }}
+                                            className="px-6 py-3 bg-lime-400 text-black rounded-xl font-bold hover:bg-lime-300 transition-colors"
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Bottom Tip */}
+                        {scannerStatus === 'scanning' && (
+                            <div className="mt-8 flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
+                                <div className="w-2 h-2 bg-lime-400 rounded-full animate-pulse"></div>
+                                <span className="text-gray-400 text-sm">Camera active — scanning for QR codes...</span>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Scan Line Animation Style */}
+                <style jsx>{`
+                    @keyframes scanLine {
+                        0%, 100% { top: 15%; opacity: 0.5; }
+                        50% { top: 80%; opacity: 1; }
+                    }
+                `}</style>
             </div>
         </div>
     );
