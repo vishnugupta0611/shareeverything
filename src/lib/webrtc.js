@@ -567,7 +567,11 @@ export class SocketSignaling {
             try {
                 // Import socket.io-client dynamically
                 import('socket.io-client').then(({ io }) => {
-                    this.socket = io(URL);
+                    this.socket = io(URL, {
+    transports: ["websocket"],   // force websocket
+    withCredentials: true,       // allow cookies/session
+    secure: true                 // important for https
+});
 
                     this.socket.on('connect', () => {
                         console.log('Connected to signaling server');
