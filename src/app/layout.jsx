@@ -5,7 +5,7 @@ import "./globals.css";
 import { Toaster } from "react-hot-toast";
 
 export const metadata = {
-  title: "FrequentShare - Secure P2P File Sharing",
+  title: "sendanything - Secure P2P File Sharing",
   description: "Share files instantly without login. Secure peer-to-peer file transfer using WebRTC.",
 };
 
@@ -14,11 +14,11 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body className="antialiased">
         <ThemeProvider>
-          <div className="min-h-screen transition-all duration-500">
+          <div className="min-h-screen transition-all duration-500 m-0">
             <FuturisticBackground />
+            <Navbar />
             <div className="relative z-10">
-              <Navbar />
-              <main>{children}</main>
+              <main className="pt-16 sm:pt-20 m-0">{children}</main>
             </div>
             <Toaster 
               position="top-right" 
