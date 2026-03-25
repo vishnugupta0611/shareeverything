@@ -174,7 +174,7 @@ function JoinPageContent() {
 
         try {
             // Check if session exists
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001'}/api/session/${key}`);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://sendanything.onrender.com'}/api/session/${key}`);
             const sessionInfo = await response.json();
 
             if (!sessionInfo.exists) {

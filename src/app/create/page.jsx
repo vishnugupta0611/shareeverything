@@ -110,7 +110,7 @@ export default function CreatePage() {
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-black' : 'bg-white'} ${isDark ? 'text-white' : 'text-gray-900'} transition-all duration-500`}>
-      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-8 md:py-16 max-w-4xl">
+      <div className="container mx-auto px-4 sm:px-6 py-4 sm:py-6 md:py-8 max-w-4xl">
 
         {/* Header */}
         <div className="text-center mb-6 sm:mb-12">
@@ -147,7 +147,7 @@ export default function CreatePage() {
           </div>
         ) : (
           /* Session Created UI */
-          <div className="space-y-4 sm:space-y-8">
+          <div className="min-h-[calc(100vh-120px)] sm:min-h-[calc(100vh-140px)] flex flex-col justify-center space-y-4 sm:space-y-8">
 
             {/* Success Message */}
             <div className="text-center">
