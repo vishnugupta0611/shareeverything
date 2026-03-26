@@ -1,5 +1,5 @@
 // Simple WebRTC P2P Connection Manager
-const URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000"
+const URL = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sendanything.onrender.com"
 
 export class P2PConnection {
     constructor() {

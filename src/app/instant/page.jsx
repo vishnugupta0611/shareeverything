@@ -33,7 +33,7 @@ function InstantEditor() {
 
     const connect = useCallback(async (id) => {
         const { io } = await import("socket.io-client");
-        const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+        const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sendanything.onrender.com";
         const socket = io(BACKEND, {
             transports: ["websocket", "polling"], // allow polling fallback
             withCredentials: true,
