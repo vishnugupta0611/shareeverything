@@ -1,13 +1,18 @@
 "use client"
 import React from 'react';
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { FaShareAlt } from "react-icons/fa";
 import { MdLightMode, MdDarkMode } from "react-icons/md";
 import { useTheme } from "../contexts/ThemeContext";
 
 export default function Navbar() {
   const navigate = useRouter();
+  const pathname = usePathname();
   const { isDark, toggleTheme } = useTheme();
+
+  // On instant page — show custom instant navbar (injected via props/context not needed,
+  // just hide this navbar entirely; instant page renders its own)
+  if (pathname?.startsWith('/instant')) return null;
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-black/20 backdrop-blur-xl z-50 px-4 sm:px-6 lg:px-8 py-4">

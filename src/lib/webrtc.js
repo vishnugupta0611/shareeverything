@@ -1,5 +1,5 @@
 // Simple WebRTC P2P Connection Manager
-const URL="https://sendanything.onrender.com"
+const URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000"
 
 export class P2PConnection {
     constructor() {
@@ -24,11 +24,13 @@ export class P2PConnection {
     }
 
     setupEventListeners() {
-        // Connection state changes
+        // Use data channel state as source of truth for connection status
+        // RTCPeerConnection state is too noisy (fires disconnected transiently)
         this.peerConnection.onconnectionstatechange = () => {
             const state = this.peerConnection.connectionState;
-            if (this.onConnectionChange) {
-                this.onConnectionChange(state);
+            // Only propagate terminal failure states — data channel handles connected/disconnected
+            if (state === 'failed') {
+                if (this.onConnectionChange) this.onConnectionChange('failed');
             }
         };
 
@@ -45,24 +47,20 @@ export class P2PConnection {
         channel.onopen = () => {
             console.log('Data channel opened');
             this.isConnected = true;
-            if (this.onConnectionChange) {
-                this.onConnectionChange('connected');
-            }
+            // Set buffered amount threshold for flow control
+            channel.bufferedAmountLowThreshold = 65536;
+            if (this.onConnectionChange) this.onConnectionChange('connected');
         };
 
         channel.onclose = () => {
             console.log('Data channel closed');
             this.isConnected = false;
-            if (this.onConnectionChange) {
-                this.onConnectionChange('disconnected');
-            }
+            if (this.onConnectionChange) this.onConnectionChange('disconnected');
         };
 
         channel.onerror = (error) => {
             console.error('Data channel error:', error);
-            if (this.onConnectionChange) {
-                this.onConnectionChange('error');
-            }
+            // Don't propagate error as connection change — it's usually transient
         };
 
         channel.onmessage = (event) => {
@@ -79,21 +77,23 @@ export class P2PConnection {
 
                 if (data.type === 'file-start') {
                     // Initialize file transfer with ordered chunk storage
-                    const smallChunkSize = 8192; // Match sender chunk size
+                    const chunkSize = 65536; // Match sender chunk size (64KB)
                     this.fileChunks.set(data.fileId, {
                         name: data.name,
                         size: data.size,
                         mimeType: data.mimeType,
-                        chunks: new Map(), // Use Map for ordered chunks
+                        chunks: new Map(),
                         receivedSize: 0,
-                        totalChunks: Math.ceil(data.size / smallChunkSize),
-                        expectedChunkIndex: 0 // Track expected next chunk
+                        totalChunks: Math.ceil(data.size / chunkSize),
+                        expectedChunkIndex: 0
                     });
 
                     if (this.onTransferProgress) {
                         this.onTransferProgress({
                             type: 'receiving',
                             fileName: data.name,
+                            totalSize: data.size,
+                            receivedSize: 0,
                             progress: 0
                         });
                     }
@@ -159,6 +159,15 @@ export class P2PConnection {
                             });
                         }
                     }
+                } else if (data.type === 'file-cancel') {
+                    // Sender cancelled — clean up partial transfer
+                    const fileInfo = this.fileChunks.get(data.fileId);
+                    if (fileInfo) {
+                        if (this.onTransferProgress) {
+                            this.onTransferProgress({ type: 'cancelled', fileName: fileInfo.name, progress: 0 });
+                        }
+                        this.fileChunks.delete(data.fileId);
+                    }
                 } else if (data.type === 'message' || data.type === 'code') {
                     // Handle regular messages and code
                     if (this.onMessage) {
@@ -192,6 +201,8 @@ export class P2PConnection {
                 this.onTransferProgress({
                     type: 'receiving',
                     fileName: fileInfo.name,
+                    totalSize: fileInfo.size,
+                    receivedSize: fileInfo.receivedSize,
                     progress: Math.round(progress)
                 });
             }
@@ -203,6 +214,11 @@ export class P2PConnection {
 
     // Create offer (sender side)
     async createOffer() {
+        // Don't create offer if already negotiating
+        if (this.peerConnection.signalingState !== 'stable') {
+            console.warn('Skipping createOffer — not in stable state:', this.peerConnection.signalingState);
+            return null;
+        }
         // Create data channel for sender
         this.dataChannel = this.peerConnection.createDataChannel('fileTransfer', {
             ordered: true
@@ -216,10 +232,13 @@ export class P2PConnection {
 
     // Create answer (receiver side)
     async createAnswer(offer) {
+        // Only accept offer if in stable state
+        if (this.peerConnection.signalingState !== 'stable') {
+            console.warn('Skipping createAnswer — not in stable state:', this.peerConnection.signalingState);
+            return null;
+        }
         await this.peerConnection.setRemoteDescription(offer);
-        // Process any pending ICE candidates after setting remote description
         await this.processPendingIceCandidates();
-        
         const answer = await this.peerConnection.createAnswer();
         await this.peerConnection.setLocalDescription(answer);
         return answer;
@@ -227,8 +246,12 @@ export class P2PConnection {
 
     // Set remote answer (sender side)
     async setRemoteAnswer(answer) {
+        // Only set remote answer if we have a local offer pending
+        if (this.peerConnection.signalingState !== 'have-local-offer') {
+            console.warn('Skipping setRemoteAnswer — not in have-local-offer state:', this.peerConnection.signalingState);
+            return;
+        }
         await this.peerConnection.setRemoteDescription(answer);
-        // Process any pending ICE candidates after setting remote description
         await this.processPendingIceCandidates();
     }
 
@@ -281,76 +304,106 @@ export class P2PConnection {
             throw new Error('Data channel not ready');
         }
 
-        const fileId = Math.random().toString(36).substr(2, 9);
+        const fileId = Math.random().toString(36).substring(2, 11);
         const arrayBuffer = await file.arrayBuffer();
 
-        // Send file metadata first
+        // Track transfer state per fileId
+        this.transfers = this.transfers || {};
+        this.transfers[fileId] = { paused: false, cancelled: false };
+        // Also index by name for easy lookup from UI
+        this.transfersByName = this.transfersByName || {};
+        this.transfersByName[file.name] = fileId;
+
         this.dataChannel.send(JSON.stringify({
             type: 'file-start',
-            fileId: fileId,
+            fileId,
             name: file.name,
             size: file.size,
             mimeType: file.type,
             timestamp: Date.now()
         }));
 
-        // Use smaller chunks for better reliability
-        const smallChunkSize = 8192; // 8KB chunks for better reliability
-        const totalChunks = Math.ceil(arrayBuffer.byteLength / smallChunkSize);
+        const chunkSize = 65536;
+        const totalChunks = Math.ceil(arrayBuffer.byteLength / chunkSize);
         let sentBytes = 0;
 
-        // Send chunks one by one with proper flow control
         for (let i = 0; i < totalChunks; i++) {
-            const start = i * smallChunkSize;
-            const end = Math.min(start + smallChunkSize, arrayBuffer.byteLength);
+            const state = this.transfers[fileId];
+
+            // Wait while paused
+            while (state.paused && !state.cancelled) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // Abort if cancelled
+            if (state.cancelled) {
+                this.dataChannel.send(JSON.stringify({ type: 'file-cancel', fileId }));
+                delete this.transfers[fileId];
+                delete this.transfersByName[file.name];
+                if (this.onTransferProgress) {
+                    this.onTransferProgress({ type: 'cancelled', fileName: file.name, progress: 0 });
+                }
+                return;
+            }
+
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, arrayBuffer.byteLength);
             const chunk = arrayBuffer.slice(start, end);
 
-            // Wait for buffer to be available
             await this.waitForBufferSpace();
 
-            // Send chunk metadata first
             this.dataChannel.send(JSON.stringify({
                 type: 'file-chunk-meta',
-                fileId: fileId,
+                fileId,
                 chunkIndex: i,
                 chunkSize: chunk.byteLength
             }));
 
-            // Wait a bit for metadata to be processed
-            await new Promise(resolve => setTimeout(resolve, 10));
-
-            // Send raw binary data directly
             this.dataChannel.send(chunk);
-
             sentBytes += chunk.byteLength;
 
-            // Update progress
             if (this.onTransferProgress) {
-                const progress = Math.round((sentBytes / arrayBuffer.byteLength) * 100);
                 this.onTransferProgress({
-                    type: 'sending',
+                    type: state.paused ? 'paused' : 'sending',
                     fileName: file.name,
-                    progress: progress
+                    progress: Math.round((sentBytes / arrayBuffer.byteLength) * 100)
                 });
             }
-
-            // Small delay to prevent overwhelming the channel
-            await new Promise(resolve => setTimeout(resolve, 15));
         }
 
-        // Send completion message
-        this.dataChannel.send(JSON.stringify({
-            type: 'file-end',
-            fileId: fileId,
-            timestamp: Date.now()
-        }));
+        this.dataChannel.send(JSON.stringify({ type: 'file-end', fileId, timestamp: Date.now() }));
+        delete this.transfers[fileId];
+        delete this.transfersByName[file.name];
     }
 
-    // Wait for data channel buffer to have space
-    async waitForBufferSpace() {
-        while (this.dataChannel && this.dataChannel.bufferedAmount > 16384) {
-            await new Promise(resolve => setTimeout(resolve, 10));
-        }
+    pauseTransfer(fileName) {
+        const fileId = this.transfersByName?.[fileName];
+        if (fileId && this.transfers?.[fileId]) this.transfers[fileId].paused = true;
+    }
+
+    resumeTransfer(fileName) {
+        const fileId = this.transfersByName?.[fileName];
+        if (fileId && this.transfers?.[fileId]) this.transfers[fileId].paused = false;
+    }
+
+    cancelTransfer(fileName) {
+        const fileId = this.transfersByName?.[fileName];
+        if (fileId && this.transfers?.[fileId]) this.transfers[fileId].cancelled = true;
+    }
+
+    // Wait for buffer space using event-driven approach
+    waitForBufferSpace() {
+        return new Promise((resolve) => {
+            if (!this.dataChannel || this.dataChannel.bufferedAmount <= 262144) {
+                resolve();
+                return;
+            }
+            const onLow = () => {
+                this.dataChannel.removeEventListener('bufferedamountlow', onLow);
+                resolve();
+            };
+            this.dataChannel.addEventListener('bufferedamountlow', onLow);
+        });
     }
 
     // Send code with syntax highlighting info

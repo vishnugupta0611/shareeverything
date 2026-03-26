@@ -21,11 +21,11 @@ function JoinPageContent() {
     const { isDark } = useTheme();
     const router = useRouter();
     const searchParams = useSearchParams();
-    const [sessionKey, setSessionKey] = useState("");
     const [isConnecting, setIsConnecting] = useState(false);
     const [showScanner, setShowScanner] = useState(false);
     const [scannerStatus, setScannerStatus] = useState('idle');
-    const [inputMethod, setInputMethod] = useState('qr'); // 'qr' or 'manual'
+    const [inputMethod, setInputMethod] = useState('qr');
+    const [manualKey, setManualKey] = useState("");
 
     const idRef = useRef(null);
     const scannerRef = useRef(null);
@@ -48,10 +48,11 @@ function JoinPageContent() {
     useEffect(() => {
         // Check for session key in URL parameters
         const keyFromUrl = searchParams.get('key');
-        if (keyFromUrl && idRef.current) {
-            idRef.current.value = keyFromUrl.toUpperCase();
+        if (keyFromUrl) {
+            const upperKey = keyFromUrl.toUpperCase();
+            setManualKey(upperKey);
             setTimeout(() => {
-                joinSession();
+                joinSession(upperKey);
             }, 500);
         }
     }, [searchParams]);
@@ -114,6 +115,7 @@ function JoinPageContent() {
                     }
 
                     key = key.trim().toUpperCase();
+                    setManualKey(key);
                     if (idRef.current) {
                         idRef.current.value = key;
                     }
@@ -157,8 +159,9 @@ function JoinPageContent() {
     }, []);
 
     // Join session
-    const joinSession = async (keyOverride) => {
-        const key = keyOverride || idRef.current?.value?.trim().toUpperCase();
+    const joinSession = React.useCallback(async (keyOverride) => {
+        const raw = typeof keyOverride === 'string' ? keyOverride : manualKey;
+        const key = raw.trim().toUpperCase();
 
         if (!key) {
             toast.error("⚠️ Please enter a session key");
@@ -174,7 +177,7 @@ function JoinPageContent() {
 
         try {
             // Check if session exists
-            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://sendanything.onrender.com'}/api/session/${key}`);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'https://sendanything.onrender.com'}/api/sessions/check/${key}`);
             const sessionInfo = await response.json();
 
             if (!sessionInfo.exists) {
@@ -195,7 +198,7 @@ function JoinPageContent() {
             toast.error("❌ Failed to join session. Please try again.");
             setIsConnecting(false);
         }
-    };
+    }, [manualKey, router]);
 
     return (
         <div className={`min-h-screen ${isDark ? 'bg-black' : 'bg-white'} ${isDark ? 'text-white' : 'text-gray-900'} transition-all duration-500`}>
@@ -277,8 +280,10 @@ function JoinPageContent() {
                                 ref={idRef}
                                 type="text"
                                 placeholder="ABC123"
+                                value={manualKey}
+                                onChange={(e) => setManualKey(e.target.value.toUpperCase())}
                                 className="w-full px-4 py-4 rounded-xl bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-center text-xl font-mono font-bold tracking-[0.3em] uppercase placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-lime-400 dark:focus:border-lime-400 focus:bg-white dark:focus:bg-gray-800 transition-all duration-300"
-                                onKeyPress={(e) => e.key === 'Enter' && !isConnecting && joinSession()}
+                                onKeyDown={(e) => e.key === 'Enter' && !isConnecting && joinSession()}
                                 maxLength={6}
                                 autoComplete="off"
                             />

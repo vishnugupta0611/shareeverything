@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTheme } from "../contexts/ThemeContext";
 import { useState, useEffect, useRef } from "react";
 import { gsap } from "gsap";
@@ -12,6 +13,7 @@ if (typeof window !== "undefined") {
 
 export default function HomePage() {
   const { isDark } = useTheme();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
   // Refs for animations
@@ -269,7 +271,7 @@ export default function HomePage() {
               <Link href="/join" className="px-7 py-4 border border-cyan-500 text-cyan-300 rounded-full font-bold text-base sm:text-lg hover:bg-cyan-500/15 transition">
                 Start Receiving
               </Link>
-              <button onClick={() => console.log('Instant share clicked')} className="px-7 py-4 bg-gray-800 text-white rounded-full font-bold text-base sm:text-lg border border-gray-700 hover:bg-gray-700 transition">
+              <button onClick={() => router.push('/instant')} className="px-7 py-4 bg-gray-800 text-white rounded-full font-bold text-base sm:text-lg border border-gray-700 hover:bg-gray-700 transition">
                 Instant Share
               </button>
             </div>
