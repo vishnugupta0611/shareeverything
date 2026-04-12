@@ -13,6 +13,7 @@ export default function Navbar() {
   // On instant page — show custom instant navbar (injected via props/context not needed,
   // just hide this navbar entirely; instant page renders its own)
   if (pathname?.startsWith('/instant')) return null;
+  if (pathname === '/') return null;
 
   return (
     <nav className="fixed top-0 left-0 right-0 bg-black/20 backdrop-blur-xl z-50 px-4 sm:px-6 lg:px-8 py-4">

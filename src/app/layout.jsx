@@ -1,6 +1,6 @@
 import Navbar from "../components/Navbar";
+import MainWrapper from "../components/MainWrapper";
 import { ThemeProvider } from "../contexts/ThemeContext";
-import FuturisticBackground from "../components/FuturisticBackground";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
 
@@ -15,10 +15,9 @@ export default function RootLayout({ children }) {
       <body className="antialiased">
         <ThemeProvider>
           <div className="min-h-screen transition-all duration-500 m-0">
-            <FuturisticBackground />
             <Navbar />
             <div className="relative z-10">
-              <main className="pt-16 sm:pt-20 m-0">{children}</main>
+              <MainWrapper>{children}</MainWrapper>
             </div>
             <Toaster 
               position="top-right" 

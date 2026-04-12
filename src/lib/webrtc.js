@@ -82,6 +82,8 @@ export class P2PConnection {
                         name: data.name,
                         size: data.size,
                         mimeType: data.mimeType,
+                        relativePath: data.relativePath || data.name,
+                        folderName: data.folderName || null,
                         chunks: new Map(),
                         receivedSize: 0,
                         totalChunks: Math.ceil(data.size / chunkSize),
@@ -92,6 +94,7 @@ export class P2PConnection {
                         this.onTransferProgress({
                             type: 'receiving',
                             fileName: data.name,
+                            folderName: data.folderName || null,
                             totalSize: data.size,
                             receivedSize: 0,
                             progress: 0
@@ -136,7 +139,9 @@ export class P2PConnection {
                                 name: fileInfo.name,
                                 data: combinedBuffer,
                                 type: fileInfo.mimeType,
-                                size: fileInfo.size
+                                size: fileInfo.size,
+                                relativePath: fileInfo.relativePath,
+                                folderName: fileInfo.folderName,
                             });
                         } catch (error) {
                             console.error('Error assembling file:', error);
@@ -201,6 +206,7 @@ export class P2PConnection {
                 this.onTransferProgress({
                     type: 'receiving',
                     fileName: fileInfo.name,
+                    folderName: fileInfo.folderName || null,
                     totalSize: fileInfo.size,
                     receivedSize: fileInfo.receivedSize,
                     progress: Math.round(progress)
@@ -320,6 +326,8 @@ export class P2PConnection {
             name: file.name,
             size: file.size,
             mimeType: file.type,
+            relativePath: file.webkitRelativePath || file.name,
+            folderName: file.webkitRelativePath ? file.webkitRelativePath.split('/')[0] : null,
             timestamp: Date.now()
         }));
 
@@ -618,13 +626,16 @@ export class SocketSignaling {
     connect() {
         return new Promise((resolve, reject) => {
             try {
-                // Import socket.io-client dynamically
                 import('socket.io-client').then(({ io }) => {
+                    const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
                     this.socket = io(URL, {
-    transports: ["websocket"],   // force websocket
-    withCredentials: true,       // allow cookies/session
-    secure: true                 // important for https
-});
+                        transports: ["websocket", "polling"],
+                        withCredentials: true,
+                        secure: isSecure,
+                        reconnectionAttempts: 5,
+                        reconnectionDelay: 1000,
+                        timeout: 10000,
+                    });
 
                     this.socket.on('connect', () => {
                         console.log('Connected to signaling server');
@@ -636,6 +647,9 @@ export class SocketSignaling {
 
                     this.socket.on('session-joined', (data) => {
                         console.log('Session joined:', data.message);
+                        if (this.onSessionJoined) {
+                            this.onSessionJoined(data);
+                        }
                     });
 
                     this.socket.on('user-joined', (data) => {
@@ -712,6 +726,22 @@ export class SocketSignaling {
 
     onUserLeftRoom(callback) {
         this.onUserLeft = callback;
+    }
+
+    onSessionJoinedCallback(callback) {
+        this.onSessionJoined = callback;
+    }
+
+    onGroupModeChanged(callback) {
+        if (this.socket) {
+            this.socket.on('group-mode-changed', callback);
+        }
+    }
+
+    toggleGroupMode(sessionId, enabled) {
+        if (this.socket) {
+            this.socket.emit('toggle-group-mode', { sessionId, enabled });
+        }
     }
 
     // Disconnect

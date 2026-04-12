@@ -4,69 +4,68 @@ import { useRouter, useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { FaShareAlt } from "react-icons/fa";
 import { MdPeople, MdContentCopy, MdShare, MdLockOpen, MdLock } from "react-icons/md";
+import { Highlight, themes } from "prism-react-renderer";
+
+const MONO   = "'JetBrains Mono','Fira Code','Cascadia Code',ui-monospace,monospace";
+const BG     = "#0f1117";
+const BG2    = "#0b0d12";
+const BORDER = "#1f2230";
+const FS     = "clamp(12px, 3.5vw, 14px)";
+const LH     = "1.6rem";
+const PAD    = "0.75rem 1rem";
 
 function InstantEditor() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const [content, setContent] = useState("");
-    const [isOwner, setIsOwner] = useState(false);
-    const [editOpen, setEditOpen] = useState(false);
-    const [viewers, setViewers] = useState(1);
-    const [roomId, setRoomId] = useState("");
+    const [content, setContent]     = useState("");
+    const [isOwner, setIsOwner]     = useState(false);
+    const [editOpen, setEditOpen]   = useState(false);
+    const [viewers, setViewers]     = useState(1);
+    const [roomId, setRoomId]       = useState("");
     const [connected, setConnected] = useState(false);
-    const [mounted, setMounted] = useState(false);
+    const [mounted, setMounted]     = useState(false);
 
-    const socketRef = useRef(null);
+    const socketRef   = useRef(null);
     const textareaRef = useRef(null);
-    const lineNumRef = useRef(null);
-    const roomIdRef = useRef("");
+    const lineNumRef  = useRef(null);
+    const roomIdRef   = useRef("");
 
     const canEdit = isOwner || editOpen;
+    const lines   = content.split("\n");
 
     const syncScroll = () => {
-        if (lineNumRef.current && textareaRef.current) {
+        if (lineNumRef.current && textareaRef.current)
             lineNumRef.current.scrollTop = textareaRef.current.scrollTop;
-        }
     };
 
-    const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+    const genId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const connect = useCallback(async (id) => {
         const { io } = await import("socket.io-client");
         const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "https://sendanything.onrender.com";
-        const socket = io(BACKEND, {
-            transports: ["websocket", "polling"], // allow polling fallback
-            withCredentials: true,
-            reconnectionAttempts: 5,
-            timeout: 10000,
-        });
+        const socket = io(BACKEND, { transports: ["websocket", "polling"], withCredentials: true });
         socketRef.current = socket;
 
-        socket.on("connect", () => {
-            setConnected(true);
-            socket.emit("instant-join", id);
+        socket.on("connect",       () => { setConnected(true); socket.emit("instant-join", id); });
+        socket.on("connect_error", () => setConnected(false));
+        socket.on("disconnect",    () => { setConnected(false); setIsOwner(false); });
+
+        socket.on("instant-init", ({ content: c, isOwner: o, editOpen: e }) => {
+            setContent(c); setIsOwner(o); setEditOpen(e);
         });
-        socket.on("connect_error", (err) => {
-            console.error("Socket connect error:", err.message);
-            setConnected(false);
-        });
-        socket.on("instant-init", ({ content: c, isOwner: owner, editOpen: open }) => {
-            setContent(c); setIsOwner(owner); setEditOpen(open);
-        });
-        socket.on("instant-update", (c) => setContent(c));
-        socket.on("instant-viewers", (n) => setViewers(n));
-        socket.on("instant-edit-access", (open) => {
-            setEditOpen(open);
-            toast(open ? "Editing opened to everyone" : "Editing restricted to owner", { id: "edit-access" });
+        socket.on("instant-update",      (c) => setContent(c));
+        socket.on("instant-viewers",     (n) => setViewers(n));
+        socket.on("instant-edit-access", (o) => {
+            setEditOpen(o);
+            toast(o ? "Editing open to all" : "Editing locked to owner", { id: "ea" });
         });
         socket.on("instant-owner", () => { setIsOwner(true); toast.success("You are now the owner"); });
-        socket.on("disconnect", () => { setConnected(false); setIsOwner(false); });
     }, []);
 
     useEffect(() => {
         setMounted(true);
         let id = searchParams.get("room");
-        if (!id) { id = generateRoomId(); router.replace(`/instant?room=${id}`); }
+        if (!id) { id = genId(); router.replace(`/instant?room=${id}`); }
         setRoomId(id);
         roomIdRef.current = id;
         connect(id);
@@ -77,163 +76,188 @@ function InstantEditor() {
 
     const handleChange = (e) => {
         if (!canEdit) return;
-        const val = e.target.value;
-        setContent(val);
-        socketRef.current?.emit("instant-typing", { roomId: roomIdRef.current, content: val });
+        const v = e.target.value;
+        setContent(v);
+        socketRef.current?.emit("instant-typing", { roomId: roomIdRef.current, content: v });
     };
 
-    const toggleEditAccess = () => {
+    const toggleEdit = () => {
         if (!isOwner) return;
         const next = !editOpen;
         setEditOpen(next);
         socketRef.current?.emit("instant-toggle-edit", { roomId: roomIdRef.current, editOpen: next });
     };
 
-    const copyLink = () => { navigator.clipboard.writeText(window.location.href); toast.success("Link copied"); };
-    const copyContent = () => { navigator.clipboard.writeText(content); toast.success("Copied to clipboard"); };
-
-    const lines = content.split("\n");
+    const copyLink    = () => { navigator.clipboard.writeText(window.location.href); toast.success("Link copied"); };
+    const copyContent = () => { navigator.clipboard.writeText(content); toast.success("Copied"); };
 
     return (
-        // Fixed overlay — covers global navbar and padding completely
-        <div className="fixed inset-0 z-[200] flex flex-col overflow-hidden"
-            style={{ background: '#111318' }}>
+        <div className="fixed inset-0 z-[200] flex flex-col" style={{ background: BG, color: "#d1d5db" }}>
 
-            {/* ── Navbar ── */}
-            <nav className="flex-shrink-0 flex items-center justify-between px-5 sm:px-7 py-3"
-                style={{ background: '#111318', borderBottom: '1px solid #1e2028' }}>
+            {/* ── NAV ── */}
+            <nav style={{ background: BG, borderBottom: `1px solid ${BORDER}` }}
+                className="flex-shrink-0 flex items-center justify-between px-3 sm:px-5 h-11">
 
-                {/* Left: logo + name */}
-                <button onClick={() => router.push("/")}
-                    className="flex items-center gap-2.5 group">
-                    <div className="w-8 h-8 bg-lime-400 rounded-full flex items-center justify-center group-hover:bg-lime-300 transition-colors">
-                        <FaShareAlt className="text-black text-sm" />
+                {/* Logo */}
+                <button onClick={() => router.push("/")} className="flex items-center gap-2 group flex-shrink-0">
+                    <div className="w-6 h-6 bg-lime-400 rounded-full flex items-center justify-center group-hover:bg-lime-300 transition-colors">
+                        <FaShareAlt className="text-black" style={{ fontSize: 10 }} />
                     </div>
-                    <span className="text-[15px] font-bold text-white group-hover:text-lime-400 transition-colors">
+                    <span className="text-sm font-bold text-white group-hover:text-lime-400 transition-colors hidden sm:block">
                         sendanything
                     </span>
                 </button>
 
-                {/* Right: session info + actions */}
-                <div className="flex items-center gap-2">
+                {/* Controls */}
+                <div className="flex items-center gap-1.5">
 
-                    {/* Connection + room — desktop only */}
-                    <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                        style={{ background: '#1a1d24' }}>
-                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? 'bg-emerald-400' : 'bg-red-400'}`}
-                            style={{ boxShadow: connected ? '0 0 6px #34d399' : 'none' }} />
-                        <span className="text-xs font-mono text-[#9ca3af] tracking-widest select-all">{roomId}</span>
+                    {/* Room ID — md+ */}
+                    <span className="hidden md:block text-xs font-mono px-2 py-1 rounded"
+                        style={{ background: "#1a1d26", color: "#6b7280" }}>
+                        {roomId}
+                    </span>
+
+                    {/* Live dot + viewers */}
+                    <div className="flex items-center gap-1 px-2 py-1 rounded text-xs"
+                        style={{ background: "#1a1d26", color: "#9ca3af" }}>
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ background: connected ? "#34d399" : "#f87171",
+                                     boxShadow: connected ? "0 0 5px #34d399" : "none" }} />
+                        <MdPeople style={{ fontSize: 13 }} />
+                        <span className="tabular-nums font-medium">{viewers}</span>
                     </div>
 
-                    {/* Viewer count + role */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
-                        style={{ background: '#1a1d24', color: isOwner ? '#93c5fd' : editOpen ? '#6ee7b7' : '#9ca3af' }}>
-                        <MdPeople className="text-sm opacity-80 flex-shrink-0" />
-                        <span className="tabular-nums">{viewers}</span>
-                    </div>
-
-                    {/* Edit access toggle — owner only, always visible */}
+                    {/* Edit toggle — owner only */}
                     {isOwner && (
-                        <button onClick={toggleEditAccess}
-                            title={editOpen ? "Lock editing" : "Allow everyone to edit"}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 whitespace-nowrap"
+                        <button onClick={toggleEdit}
+                            className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all"
                             style={{
-                                background: editOpen ? '#14532d' : '#1a1d24',
-                                color: editOpen ? '#86efac' : '#9ca3af',
-                                border: editOpen ? '1px solid #166534' : '1px solid #1e2028',
+                                background: editOpen ? "#14532d" : "#1a1d26",
+                                color:      editOpen ? "#86efac" : "#9ca3af",
+                                border:     `1px solid ${editOpen ? "#166534" : BORDER}`,
                             }}>
                             {editOpen
-                                ? <MdLockOpen className="text-green-400 text-sm flex-shrink-0" />
-                                : <MdLock className="text-[#6b7280] text-sm flex-shrink-0" />
+                                ? <MdLockOpen style={{ fontSize: 13, color: "#4ade80" }} />
+                                : <MdLock     style={{ fontSize: 13, color: "#6b7280" }} />
                             }
-                            <span className="hidden sm:inline">{editOpen ? 'Open' : 'Locked'}</span>
+                            <span className="hidden sm:inline">{editOpen ? "Open" : "Locked"}</span>
                         </button>
                     )}
 
-                    {/* Copy content — always visible */}
-                    <button onClick={copyContent}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:brightness-125 flex-shrink-0"
-                        style={{ background: '#1a1d24', color: '#9ca3af' }}
-                        title="Copy content">
-                        <MdContentCopy className="text-base" />
+                    {/* Copy */}
+                    <button onClick={copyContent} title="Copy content"
+                        className="w-7 h-7 rounded flex items-center justify-center transition-colors hover:brightness-125"
+                        style={{ background: "#1a1d26", color: "#9ca3af" }}>
+                        <MdContentCopy style={{ fontSize: 14 }} />
                     </button>
 
-                    {/* Share link — always visible */}
+                    {/* Share */}
                     <button onClick={copyLink}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 hover:opacity-90 flex-shrink-0"
-                        style={{ background: '#1d4ed8', color: '#fff' }}>
-                        <MdShare className="text-sm flex-shrink-0" />
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold transition-all hover:opacity-90"
+                        style={{ background: "#1d4ed8", color: "#fff" }}>
+                        <MdShare style={{ fontSize: 13 }} />
                         <span className="hidden sm:inline">Share</span>
                     </button>
                 </div>
             </nav>
 
-            {/* ── Editor area ── */}
+            {/* ── EDITOR ── */}
             <div className="flex-1 flex overflow-hidden">
 
                 {/* Line numbers */}
                 <div ref={lineNumRef}
-                    className="flex-shrink-0 overflow-hidden select-none py-5 text-right w-12"
+                    className="hidden xs:block flex-shrink-0 overflow-hidden select-none py-3 text-right"
                     style={{
-                        background: '#0e1016',
-                        borderRight: '1px solid #1e2028',
-                        fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
-                        fontSize: '12px',
-                        lineHeight: '1.75rem',
-                        color: '#4b5563',
+                        width: "2rem",
+                        background: BG2,
+                        borderRight: `1px solid ${BORDER}`,
+                        fontFamily: MONO,
+                        fontSize: 11,
+                        lineHeight: "1.6rem",
+                        color: "#374151",
                     }}
                     aria-hidden="true">
                     {lines.map((_, i) => (
-                        <div key={i} className="px-3" style={{ lineHeight: '1.75rem' }}>{i + 1}</div>
+                        <div key={i} className="pr-1.5" style={{ lineHeight: "1.6rem" }}>{i + 1}</div>
                     ))}
-                    {Array.from({ length: 10 }).map((_, i) => (
-                        <div key={`p${i}`} className="px-3 opacity-0" style={{ lineHeight: '1.75rem' }}>0</div>
+                    {Array.from({ length: 8 }).map((_, i) => (
+                        <div key={`p${i}`} className="pr-1.5 opacity-0" style={{ lineHeight: "1.6rem" }}>0</div>
                     ))}
                 </div>
 
-                {/* Textarea */}
-                <textarea
-                    ref={textareaRef}
-                    value={content}
-                    onChange={handleChange}
-                    onScroll={syncScroll}
-                    readOnly={!canEdit}
-                    placeholder={canEdit ? "Start typing — viewers see it live..." : "Waiting for owner to type..."}
-                    spellCheck={false}
-                    autoCorrect="off"
-                    autoCapitalize="off"
-                    className="flex-1 h-full py-5 px-6 outline-none resize-none overflow-y-auto"
-                    style={{
-                        background: '#111318',
-                        fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code',monospace",
-                        fontSize: '13.5px',
-                        lineHeight: '1.75rem',
-                        color: '#d1d5db',          // #d1d5db — WCAG AA on #111318 (contrast ~8.5:1)
-                        caretColor: '#60a5fa',
-                        tabSize: 2,
-                        whiteSpace: 'pre',
-                        wordBreak: 'normal',
-                        overflowWrap: 'normal',
-                        cursor: canEdit ? 'text' : 'default',
-                    }}
-                />
+                {/* Editor: Prism highlighted layer + transparent textarea */}
+                <div className="flex-1 relative overflow-auto"
+                    style={{ background: BG, WebkitOverflowScrolling: "touch" }}>
+
+                    {/* Highlighted layer — pointer-events none, sits behind textarea */}
+                    <Highlight theme={themes.nightOwl} code={content || " "} language="javascript">
+                        {({ tokens, getLineProps, getTokenProps }) => (
+                            <pre
+                                aria-hidden="true"
+                                style={{
+                                    position: "absolute", inset: 0, margin: 0,
+                                    padding: PAD, fontFamily: MONO, fontSize: FS,
+                                    lineHeight: LH, background: "transparent",
+                                    whiteSpace: "pre", wordBreak: "normal",
+                                    overflowWrap: "normal", pointerEvents: "none",
+                                    tabSize: 2, overflow: "hidden",
+                                }}>
+                                {tokens.map((line, i) => (
+                                    <div key={i} {...getLineProps({ line })}>
+                                        {line.map((token, j) => (
+                                            <span key={j} {...getTokenProps({ token })} />
+                                        ))}
+                                    </div>
+                                ))}
+                            </pre>
+                        )}
+                    </Highlight>
+
+                    {/* Transparent textarea on top */}
+                    <textarea
+                        ref={textareaRef}
+                        value={content}
+                        onChange={handleChange}
+                        onScroll={(e) => {
+                            syncScroll();
+                            const pre = e.target.previousSibling;
+                            if (pre) { pre.scrollTop = e.target.scrollTop; pre.scrollLeft = e.target.scrollLeft; }
+                        }}
+                        readOnly={!canEdit}
+                        placeholder={canEdit ? "Start typing — viewers see it live..." : "Waiting for owner to type..."}
+                        spellCheck={false}
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        style={{
+                            position: "absolute", inset: 0,
+                            background: "transparent", color: "transparent",
+                            caretColor: "#60a5fa", fontFamily: MONO,
+                            fontSize: FS, lineHeight: LH, padding: PAD,
+                            tabSize: 2, whiteSpace: "pre", wordBreak: "normal",
+                            overflowWrap: "normal", resize: "none",
+                            outline: "none", border: "none", overflow: "auto",
+                            cursor: canEdit ? "text" : "default",
+                            WebkitOverflowScrolling: "touch",
+                        }}
+                    />
+                </div>
             </div>
 
-            {/* ── Status bar ── */}
-            <div className="flex-shrink-0 flex items-center justify-between px-4 py-1"
+            {/* ── STATUS BAR ── */}
+            <div className="flex-shrink-0 flex items-center justify-between px-3 py-0.5"
                 style={{
-                    background: '#0e1016',
-                    borderTop: '1px solid #1e2028',
-                    fontFamily: "'JetBrains Mono','Fira Code',monospace",
-                    fontSize: '11px',
-                    color: '#6b7280',
+                    background:  BG2,
+                    borderTop:   `1px solid ${BORDER}`,
+                    fontFamily:  MONO,
+                    fontSize:    10,
+                    color:       "#4b5563",
                 }}>
-                <span className="tabular-nums">{lines.length} lines · {content.length} chars</span>
-                <div className="flex items-center gap-3">
-                    {/* Mobile: show room id here */}
-                    <span className="sm:hidden font-mono tracking-widest text-[#4b5563]">{roomId}</span>
-                <span>{canEdit ? (isOwner ? 'owner · editing' : 'editing') : 'read only'}</span>
-                    <span style={{ color: connected ? '#34d399' : '#f87171' }}>{connected ? '● connected' : '● disconnected'}</span>
+                <span className="tabular-nums">{lines.length}L · {content.length}C</span>
+                <div className="flex items-center gap-2">
+                    <span className="md:hidden">{roomId}</span>
+                    <span style={{ color: "#6b7280" }}>
+                        {canEdit ? (isOwner ? "owner" : "editor") : "viewer"}
+                    </span>
                 </div>
             </div>
         </div>
@@ -243,7 +267,7 @@ function InstantEditor() {
 export default function InstantPage() {
     return (
         <Suspense fallback={
-            <div className="fixed inset-0 z-[200] bg-[#111318] flex items-center justify-center">
+            <div className="fixed inset-0 z-[200] flex items-center justify-center" style={{ background: "#0f1117" }}>
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-400 border-t-transparent" />
             </div>
         }>

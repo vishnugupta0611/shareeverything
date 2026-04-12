@@ -27,6 +27,7 @@ function ShareDataPageContent() {
     const [codeInput, setCodeInput] = useState("");
     const [codeLanguage, setCodeLanguage] = useState("javascript");
     const [receivedFiles, setReceivedFiles] = useState([]);
+    const [folders, setFolders] = useState({}); // key: folderName, value: { files[], totalCount, expanded }
     const [fileTransfers, setFileTransfers] = useState({}); // key: fileId, value: progress info
     const [showCodeModal, setShowCodeModal] = useState(false);
     const [mounted, setMounted] = useState(false);
@@ -34,12 +35,20 @@ function ShareDataPageContent() {
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [modalDragOver, setModalDragOver] = useState(false);
     const [plusHovered, setPlusHovered] = useState(false);
+    const [groupMode, setGroupMode] = useState(false);
+    const [isOwner, setIsOwner] = useState(false); // first joiner is owner
 
+    const connectionStatusRef = useRef("disconnected");
+    // Keep ref in sync with state for use in callbacks
+    useEffect(() => { connectionStatusRef.current = connectionStatus; }, [connectionStatus]);
     const modalFileInputRef = useRef(null);
     const folderInputRef = useRef(null);
     const codeInputRef = useRef(null);
     const feedEndRef = useRef(null);
-    const transferStartTimes = useRef({}); // track start time per fileName
+    const transferStartTimes = useRef({});
+    const lastProgressUpdate = useRef({}); // throttle progress updates per file
+
+    const signalingRef = useRef(null); // store signaling for cleanup
 
     const joinSession = useCallback(async (key) => {
         setConnectionStatus("connecting");
@@ -49,6 +58,7 @@ function ShareDataPageContent() {
             if (!sessionInfo.success || !sessionInfo.exists) { toast.error("Session not found."); return; }
             await backendAPI.joinSession(key);
             const socketSignaling = new SocketSignaling(key);
+            signalingRef.current = socketSignaling;
             await socketSignaling.connect();
             const connection = new P2PConnection();
             setP2pConnection(connection);
@@ -70,17 +80,25 @@ function ShareDataPageContent() {
             });
             connection.onFileReceived((file) => {
                 const url = URL.createObjectURL(new Blob([file.data], { type: file.type }));
-                setReceivedFiles(prev => {
-                    // Replace placeholder if exists, otherwise append
-                    const idx = prev.findIndex(f => f.name === file.name && f.placeholder);
-                    const entry = { name: file.name, type: file.type, size: file.size, url, timestamp: Date.now(), dir: 'received' };
-                    if (idx !== -1) {
-                        const next = [...prev];
-                        next[idx] = entry;
-                        return next;
-                    }
-                    return [...prev, entry];
-                });
+                const entry = { name: file.name, type: file.type, size: file.size, url, relativePath: file.relativePath, timestamp: Date.now(), dir: 'received' };
+
+                if (file.folderName) {
+                    // Folder files go ONLY into folders state — never into receivedFiles
+                    setFolders(prev => {
+                        const existing = prev[file.folderName] || { files: [], totalCount: 0, expanded: false, timestamp: Date.now(), dir: 'received' };
+                        const fileIdx = existing.files.findIndex(f => f.relativePath === file.relativePath);
+                        const updatedFiles = fileIdx !== -1
+                            ? existing.files.map((f, i) => i === fileIdx ? { ...f, url, done: true } : f)
+                            : [...existing.files, { ...entry, done: true }];
+                        return { ...prev, [file.folderName]: { ...existing, files: updatedFiles } };
+                    });
+                } else {
+                    setReceivedFiles(prev => {
+                        const idx = prev.findIndex(f => f.name === file.name && f.placeholder);
+                        if (idx !== -1) { const next = [...prev]; next[idx] = entry; return next; }
+                        return [...prev, entry];
+                    });
+                }
                 toast.success(`Received: ${file.name}`);
             });
             connection.onTransferProgressChange((progress) => {
@@ -91,21 +109,31 @@ function ShareDataPageContent() {
                     transferStartTimes.current[key] = { startTime: now };
                 }
 
+                // Throttle UI updates to max once per 200ms per file (prevents lag during folder transfers)
+                const lastUpdate = lastProgressUpdate.current[key] || 0;
+                const isDone = progress.progress >= 100 || progress.type === 'cancelled';
+                if (!isDone && now - lastUpdate < 200) return;
+                lastProgressUpdate.current[key] = now;
+
                 const { startTime } = transferStartTimes.current[key];
                 const elapsed = (now - startTime) / 1000;
 
-                // For receiver: add a placeholder card as soon as transfer starts
                 if (progress.type === 'receiving') {
-                    setReceivedFiles(prev => {
-                        const exists = prev.find(f => f.name === key && f.dir === 'received');
-                        if (!exists) {
-                            return [...prev, {
-                                name: key, type: '', size: progress.totalSize || 0,
-                                url: null, timestamp: now, dir: 'received', placeholder: true
-                            }];
-                        }
-                        return prev;
-                    });
+                    // Only add placeholder for non-folder files
+                    // Folder files are tracked in folders state, not receivedFiles
+                    const isFolderFile = progress.folderName;
+                    if (!isFolderFile) {
+                        setReceivedFiles(prev => {
+                            const exists = prev.find(f => f.name === key && f.dir === 'received');
+                            if (!exists) {
+                                return [...prev, {
+                                    name: key, type: '', size: progress.totalSize || 0,
+                                    url: null, timestamp: now, dir: 'received', placeholder: true
+                                }];
+                            }
+                            return prev;
+                        });
+                    }
                 }
 
                 setFileTransfers(prev => ({
@@ -118,12 +146,13 @@ function ShareDataPageContent() {
                         totalSize: progress.totalSize ?? prev[key]?.totalSize ?? 0,
                         receivedSize: progress.receivedSize ?? 0,
                         elapsed,
-                        done: progress.progress >= 100 || progress.type === 'cancelled',
+                        done: isDone,
                     }
                 }));
 
-                if (progress.progress >= 100 || progress.type === 'cancelled') {
+                if (isDone) {
                     delete transferStartTimes.current[key];
+                    delete lastProgressUpdate.current[key];
                     setTimeout(() => {
                         setFileTransfers(prev => {
                             const next = { ...prev };
@@ -133,6 +162,26 @@ function ShareDataPageContent() {
                     }, 3000);
                 }
             });
+            socketSignaling.onSessionJoinedCallback((data) => {
+                // First joiner is owner
+                setIsOwner(true);
+                setGroupMode(data.groupMode || false);
+                // In group mode, connect to all existing peers
+                if (data.groupMode && data.existingPeers?.length > 0) {
+                    data.existingPeers.forEach(async (peerId) => {
+                        try {
+                            const offer = await connection.createOffer();
+                            if (offer) socketSignaling.sendSignal(offer, peerId);
+                        } catch (e) { console.error(e); }
+                    });
+                }
+            });
+
+            socketSignaling.onGroupModeChanged(({ enabled }) => {
+                setGroupMode(enabled);
+                toast(enabled ? 'Group mode enabled — anyone with the link can join' : 'Group mode disabled', { id: 'group-mode' });
+            });
+
             socketSignaling.onSignalReceived(async (data) => {
                 if (data.signal.type === 'offer') {
                     const answer = await connection.createAnswer(data.signal);
@@ -160,25 +209,34 @@ function ShareDataPageContent() {
 
     useEffect(() => {
         setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
         const key = searchParams.get('key');
-        if (key && mounted) { setSessionKey(key); joinSession(key); }
-    }, [searchParams, mounted, joinSession]);
+        if (key) { setSessionKey(key); joinSession(key); }
+        // Cleanup on unmount — disconnect socket and close WebRTC
+        return () => {
+            signalingRef.current?.disconnect();
+        };
+    }, [mounted]); // only run once when mounted flips to true
 
     useEffect(() => { feedEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, receivedFiles]);
 
     if (!mounted) return null;
 
-    const handleFileShare = async (file) => {
-        if (connectionStatus !== 'connected') { toast.error("Wait for connection first"); return; }
-        const localUrl = URL.createObjectURL(file);
+    const handleFileShare = async (file, skipFeed = false) => {
+        if (connectionStatusRef.current !== 'connected') { toast.error("Wait for connection first"); return; }
         const ts = Date.now();
-        setReceivedFiles(prev => [...prev, {
-            name: file.name, type: file.type, size: file.size,
-            url: localUrl, timestamp: ts, dir: 'sent'
-        }]);
-        // seed transfer state immediately
-        transferStartTimes.current[file.name] = { startTime: ts };
-        setFileTransfers(prev => ({ ...prev, [file.name]: { progress: 0, type: 'sending', elapsed: 0, done: false } }));
+        if (!skipFeed) {
+            const localUrl = URL.createObjectURL(file);
+            setReceivedFiles(prev => [...prev, {
+                name: file.name, type: file.type, size: file.size,
+                url: localUrl, timestamp: ts, dir: 'sent'
+            }]);
+            transferStartTimes.current[file.name] = { startTime: ts };
+            setFileTransfers(prev => ({ ...prev, [file.name]: { progress: 0, type: 'sending', elapsed: 0, done: false } }));
+        }
         try {
             await p2pConnection.sendFile(file);
         } catch { toast.error("Failed to send file."); }
@@ -204,10 +262,47 @@ function ShareDataPageContent() {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
         setShowUploadModal(false);
-        // Send files sequentially to avoid overwhelming the channel
+
+        const folderName = files[0].webkitRelativePath?.split('/')[0] || 'folder';
+        const ts = Date.now();
+
+        setFolders(prev => ({
+            ...prev,
+            [folderName]: {
+                files: files.map(f => ({
+                    name: f.name,
+                    relativePath: f.webkitRelativePath || f.name,
+                    size: f.size,
+                    type: f.type,
+                    done: false,
+                    url: null,
+                })),
+                totalCount: files.length,
+                expanded: false,
+                timestamp: ts,
+                dir: 'sent',
+            }
+        }));
+
         const sendSequentially = async () => {
             for (const file of files) {
-                await handleFileShare(file);
+                await handleFileShare(file, true); // skipFeed = true
+                // Mark file done — batch update, no per-chunk state
+                setFolders(prev => {
+                    const folder = prev[folderName];
+                    if (!folder) return prev;
+                    return {
+                        ...prev,
+                        [folderName]: {
+                            ...folder,
+                            files: folder.files.map(f =>
+                                f.relativePath === (file.webkitRelativePath || file.name)
+                                    ? { ...f, done: true }
+                                    : f
+                            )
+                        }
+                    };
+                });
             }
         };
         sendSequentially();
@@ -253,6 +348,23 @@ function ShareDataPageContent() {
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
     };
 
+    const downloadFolder = async (folderName, folderData) => {
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        for (const f of folderData.files) {
+            if (!f.url) continue;
+            const resp = await fetch(f.url);
+            const blob = await resp.blob();
+            zip.file(f.relativePath || f.name, blob);
+        }
+        const content = await zip.generateAsync({ type: 'blob' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(content);
+        a.download = `${folderName}.zip`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        toast.success(`Downloaded ${folderName}.zip`);
+    };
+
     const formatSize = (bytes) => {
         if (!bytes) return '';
         const i = Math.floor(Math.log(bytes) / Math.log(1024));
@@ -274,7 +386,8 @@ function ShareDataPageContent() {
 
     const allItems = [
         ...messages,
-        ...receivedFiles.map(f => ({ ...f, messageType: 'file' }))
+        ...receivedFiles.filter(f => !f.folderName).map(f => ({ ...f, messageType: 'file' })),
+        ...Object.entries(folders).map(([name, data]) => ({ messageType: 'folder', folderName: name, ...data })),
     ].sort((a, b) => a.timestamp - b.timestamp);
 
     const hasContent = allItems.length > 0;
@@ -306,18 +419,39 @@ function ShareDataPageContent() {
             </div>
 
             {/* Top bar */}
-            <div className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-white/[0.04]">
+            <div className="relative z-10 flex items-center justify-between px-4 sm:px-6 py-3 border-b border-white/[0.04]">
                 <div className="flex items-center gap-2.5">
                     <div className={`w-2 h-2 rounded-full ${statusConfig.dot}`} />
                     <span className="text-sm text-gray-500">{statusConfig.label}</span>
                 </div>
-                {sessionKey && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08]">
-                        <span className="text-[11px] text-gray-600 uppercase tracking-wider">Session</span>
-                        <span className="text-xs font-mono font-bold text-blue-400 tracking-[0.2em]">{sessionKey}</span>
-                    </div>
-                )}
-                <div className="w-32" />
+                <div className="flex items-center gap-3">
+                    {sessionKey && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08]">
+                            <span className="text-[11px] text-gray-600 uppercase tracking-wider">Session</span>
+                            <span className="text-xs font-mono font-bold text-blue-400 tracking-[0.2em]">{sessionKey}</span>
+                        </div>
+                    )}
+                    {/* Group mode toggle — only owner sees it */}
+                    {isOwner && (
+                        <button
+                            onClick={() => {
+                                const next = !groupMode;
+                                setGroupMode(next);
+                                signalingRef.current?.toggleGroupMode(sessionKey, next);
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200"
+                            style={{
+                                background: groupMode ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.04)',
+                                border: groupMode ? '1px solid rgba(52,211,153,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                                color: groupMode ? '#6ee7b7' : 'rgba(255,255,255,0.35)',
+                            }}
+                            title="Toggle group mode — allow multiple people to join"
+                        >
+                            <span>{groupMode ? '⬡' : '⬡'}</span>
+                            <span className="hidden sm:inline">{groupMode ? 'Group on' : 'Group off'}</span>
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Main layout */}
@@ -514,6 +648,83 @@ function ShareDataPageContent() {
                                                         <p className="text-[11px] text-emerald-400/70">
                                                             {item.dir === 'sent' ? '✓ Sent' : '✓ Received'}
                                                         </p>
+                                                    )}
+                                                </div>
+                                            );
+                                        })() : item.messageType === 'folder' ? (() => {
+                                            const doneCount = item.files.filter(f => f.done).length;
+                                            const total = item.files.length;
+                                            const allDone = doneCount === total;
+                                            const pct = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+                                            const isExpanded = folders[item.folderName]?.expanded;
+
+                                            return (
+                                                <div
+                                                    className="w-full max-w-xs sm:max-w-sm rounded-2xl overflow-hidden transition-all duration-300"
+                                                    style={{
+                                                        background: item.dir === 'sent' ? 'rgba(96,165,250,0.07)' : 'rgba(255,255,255,0.04)',
+                                                        border: item.dir === 'sent' ? '1px solid rgba(96,165,250,0.15)' : '1px solid rgba(255,255,255,0.07)',
+                                                        marginLeft: item.dir === 'sent' ? 'auto' : '0',
+                                                    }}
+                                                >
+                                                    {/* Folder header */}
+                                                    <div
+                                                        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
+                                                        onDoubleClick={() => setFolders(prev => ({
+                                                            ...prev,
+                                                            [item.folderName]: { ...prev[item.folderName], expanded: !prev[item.folderName]?.expanded }
+                                                        }))}
+                                                    >
+                                                        <div className="flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center"
+                                                            style={{ background: 'rgba(255,255,255,0.06)' }}>
+                                                            <MdFolder className="text-yellow-400 text-2xl" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-medium text-white/90 truncate">{item.folderName}</p>
+                                                            <p className="text-xs text-white/30">{doneCount}/{total} files{allDone ? ' · done' : ' · transferring'}</p>
+                                                        </div>
+                                                        {item.dir === 'received' && allDone && (
+                                                            <button
+                                                                onClick={() => downloadFolder(item.folderName, item)}
+                                                                className="flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 hover:scale-110"
+                                                                style={{ background: 'rgba(96,165,250,0.15)', border: '1px solid rgba(96,165,250,0.3)' }}
+                                                                title="Download as ZIP"
+                                                            >
+                                                                <MdDownload className="text-blue-400 text-base" />
+                                                            </button>
+                                                        )}
+                                                        <span className="text-[10px] text-white/20 ml-1 hidden sm:inline">dbl-click</span>
+                                                    </div>
+
+                                                    {/* Progress bar */}
+                                                    {!allDone && (
+                                                        <div className="px-4 pb-3 space-y-1">
+                                                            <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                                                                <div className="h-full rounded-full transition-all duration-500"
+                                                                    style={{ width: `${pct}%`, background: 'linear-gradient(90deg,rgba(96,165,250,0.9),rgba(147,197,253,1))', boxShadow: '0 0 6px rgba(96,165,250,0.6)' }} />
+                                                            </div>
+                                                            <p className="text-[11px] text-white/30">{pct}% · {doneCount} of {total} files</p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Expanded file list */}
+                                                    {isExpanded && (
+                                                        <div className="border-t border-white/[0.06] max-h-48 overflow-y-auto">
+                                                            {item.files.map((f, fi) => (
+                                                                <div key={fi} className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.04] last:border-0">
+                                                                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                                                        style={{ background: f.done ? '#34d399' : 'rgba(255,255,255,0.2)' }} />
+                                                                    <span className="text-xs text-white/60 truncate flex-1">{f.relativePath || f.name}</span>
+                                                                    <span className="text-[10px] text-white/25 flex-shrink-0">{formatSize(f.size)}</span>
+                                                                    {f.done && f.url && item.dir === 'received' && (
+                                                                        <button onClick={() => downloadFile(f)}
+                                                                            className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center hover:bg-white/10">
+                                                                            <MdDownload className="text-blue-400 text-xs" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     )}
                                                 </div>
                                             );

@@ -4,652 +4,390 @@ import { useState, useEffect } from "react";
 export default function AboutPage() {
   const [mounted, setMounted] = useState(false);
   const [selectedRole, setSelectedRole] = useState("backend");
-  const [hoveredFeature, setHoveredFeature] = useState(null);
 
   useEffect(() => { setMounted(true); }, []);
 
   const team = {
     backend: {
       name: "Vishnu Gupta",
-      role: "Backend Engineer",
-      initials: "VG",
-      color: "#6EE7B7",
-      image: "/vishnu.png",
-      description: "Architects the core WebRTC infrastructure and session management. Focused on systems that are fast, invisible, and reliable under pressure.",
-      linkedin: "https://linkedin.com/in/vishnugupta0611",
+      role: "LEAD_BACKEND",
+      id: "01",
+      bio: "Engineered the WebRTC signaling mesh. Focused on zero-latency data tunnels and peer-to-peer security architecture. Architected the live session management layer powering real-time text collaboration.",
+      skills: ["WebRTC", "Node.js", "Redis", "Socket.IO"],
+      link: "https://vishnugupta0611.vercel.app",
       github: "https://github.com/vishnugupta0611",
-      portfolio: "https://vishnugupta0611.vercel.app",
+      linkedin: "https://linkedin.com/in/vishnugupta0611",
     },
     frontend: {
       name: "Aria Patel",
-      role: "Frontend Engineer",
-      initials: "AP",
-      color: "#A78BFA",
-      description: "Builds interfaces that feel effortless. Bridges the gap between design intent and engineering reality — pixel by pixel.",
-      linkedin: "https://linkedin.com",
+      role: "UI_ENGINEER",
+      id: "02",
+      bio: "Architected the design system and motion primitives. Bridging the gap between raw data and human interaction — every transition, every state, every pixel deliberate.",
+      skills: ["React", "TypeScript", "Tailwind", "Motion"],
+      link: "#",
       github: "https://github.com",
-      portfolio: "https://ariapatel.dev",
+      linkedin: "https://linkedin.com",
     },
     design: {
       name: "Jordan Blake",
-      role: "UI/UX Designer",
-      initials: "JB",
-      color: "#FCA5A5",
-      description: "Shapes the product's personality. Every flow, every screen, every micro-interaction is a deliberate decision toward clarity.",
-      linkedin: "https://linkedin.com",
+      role: "PRODUCT_DESIGN",
+      id: "03",
+      bio: "Defined the visual language of SendAnything. Reducing complex P2P concepts into intuitive, minimal interfaces. Owns every user flow from zero to connected.",
+      skills: ["Figma", "Strategy", "UX", "Prototyping"],
+      link: "#",
       github: "https://github.com",
-      portfolio: "https://jordanblake.design",
+      linkedin: "https://linkedin.com",
     },
     testing: {
       name: "Casey Morgan",
-      role: "QA Engineer",
-      initials: "CM",
-      color: "#FDE68A",
-      description: "Breaks things before users do. Thinks adversarially so the product holds up in every browser, on every network.",
-      linkedin: "https://linkedin.com",
+      role: "QA_ENGINEER",
+      id: "04",
+      bio: "Ensuring 99.9% reliability across all network conditions and browser environments through adversarial testing. Thinks like an attacker so users never have to.",
+      skills: ["Playwright", "Jest", "CI/CD", "Load Testing"],
+      link: "#",
       github: "https://github.com",
-      portfolio: "https://caseymorgan.dev",
-    },
+      linkedin: "https://linkedin.com",
+    }
   };
 
-  const roles = [
-    { key: "backend", label: "Backend" },
-    { key: "frontend", label: "Frontend" },
-    { key: "design", label: "Design" },
-    { key: "testing", label: "QA" },
-  ];
-
   const features = [
-    { id: 1, label: "P2P Transfer", detail: "Files move directly between browsers via WebRTC. No server ever sees your data." },
-    { id: 2, label: "Instant Sessions", detail: "Six characters. No login. Share in under three seconds from any device." },
-    { id: 3, label: "QR Connect", detail: "Scan and join. Built for the moment you're both in the same room." },
-    { id: 4, label: "Live Streaming", detail: "Chunked real-time transfer. Download starts before upload finishes." },
-    { id: 5, label: "Zero Storage", detail: "Sessions expire. Files vanish. There is no database of your content." },
+    { id: "F01", label: "P2P TRANSFER", desc: "Files move directly between browsers via WebRTC data channels. No server ever sees your bytes." },
+    { id: "F02", label: "INSTANT SESSIONS", desc: "Six characters. No login. Share in under three seconds from any device on any network." },
+    { id: "F03", label: "QR CONNECT", desc: "Scan and join. Built for the moment you're both in the same room." },
+    { id: "F04", label: "LIVE TEXT EDITOR", desc: "Real-time collaborative text via WebSocket. See every keystroke. Control viewer edit permissions.", isNew: true },
+    { id: "F05", label: "ZERO STORAGE", desc: "Sessions expire. Files vanish. There is no database, no log, no trace of your content." },
+    { id: "F06", label: "VIEWER CONTROL", desc: "Lock or unlock editing for connected viewers — you stay in control of the session." },
   ];
 
   const p = team[selectedRole];
-
   if (!mounted) return null;
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;600;700&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-          --bg: #0a0a0a;
-          --s1: #121212;
-          --s2: #1a1a1a;
-          --bd: rgba(255,255,255,0.07);
-          --bd2: rgba(255,255,255,0.13);
-          --text: #f5f5f5;
-          --text-muted: #a0a0a0;
-          --accent: #6EE7B7;
-          --accent-secondary: #A78BFA;
-          --dim: #2a2a2a;
-          --sora: 'Sora', sans-serif;
-          --serif: 'Instrument Serif', Georgia, serif;
+          --bg: #ffffff;
+          --text: #0a0a0a;
+          --text-secondary: #3a3a3a;
+          --text-muted: #555;
+          --text-faint: #777;
+          --border: #e0e0e0;
+          --border-strong: #b0b0b0;
+          --surface: #f5f5f5;
+          --surface2: #ececec;
         }
 
-        html { scroll-behavior: smooth; }
         body {
           background: var(--bg);
           color: var(--text);
-          font-family: var(--sora);
+          font-family: 'Inter', sans-serif;
           -webkit-font-smoothing: antialiased;
-          overflow-x: hidden;
         }
 
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(28px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes cardIn {
-          from { opacity: 0; transform: translateX(12px); }
-          to   { opacity: 1; transform: translateX(0); }
-        }
-
-        .fu1 { animation: fadeUp 0.85s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
-        .fu2 { animation: fadeUp 0.85s cubic-bezier(0.16,1,0.3,1) 0.18s both; }
-        .fu3 { animation: fadeUp 0.85s cubic-bezier(0.16,1,0.3,1) 0.32s both; }
-        .fu4 { animation: fadeUp 0.85s cubic-bezier(0.16,1,0.3,1) 0.46s both; }
-        .card-anim { animation: cardIn 0.32s cubic-bezier(0.16,1,0.3,1) both; }
-
-        /* ── WRAPPER ── */
-        .wrap {
-          width: 100%;
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 0 40px;
-        }
-        @media(max-width:600px){ .wrap{ padding: 0 20px; } }
-
-        hr.rule {
-          border: none;
-          border-top: 1px solid var(--bd);
-          max-width: 1100px;
-          margin: 0 auto;
-          padding: 0 40px;
-          box-sizing: content-box;
-        }
-
-        /* ── HERO ── */
-        .hero {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 80px;
-          align-items: end;
-          padding: 160px 40px 120px;
-          max-width: 1100px;
-          margin: 0 auto;
-        }
-        @media(max-width:800px){
-          .hero { grid-template-columns:1fr; gap:52px; padding:100px 20px 80px; }
-        }
-
-        .eyebrow {
+        /* ── HEADER (Replacing Sidebar) ── */
+        .top-nav {
+          height: 56px;
+          border-bottom: 1px solid var(--border);
           display: flex;
           align-items: center;
-          gap: 10px;
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.25em;
-          text-transform: uppercase;
-          color: var(--accent);
-          margin-bottom: 28px;
-        }
-        .eyebrow::before {
-          content: '';
-          width: 20px; height: 1px;
-          background: var(--accent);
-          flex-shrink: 0;
+          justify-content: space-between;
+          padding: 0 8%;
+          background: #fff;
         }
 
-        .hero-title {
-          font-family: var(--serif);
-          font-size: clamp(48px, 7vw, 88px);
-          font-weight: 400;
-          line-height: 1.08;
-          letter-spacing: -0.028em;
-          color: var(--text);
-        }
-        .hero-title em {
-          font-style: italic;
-          background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
+        .nav-logo { font-weight: 900; font-size: 20px; letter-spacing: -0.02em; }
+        .nav-status { font-size: 10px; font-weight: 700; color: #999; letter-spacing: 2px; }
 
-        .hero-desc {
-          font-size: 17px;
-          line-height: 2;
-          color: var(--text-muted);
-          font-weight: 300;
-          margin-bottom: 48px;
-        }
-
-        .stats-row {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          background: var(--bd);
-          gap: 1px;
-          border: 1px solid var(--bd);
-        }
-        .stat {
-          background: var(--bg);
-          padding: 22px 16px;
-          text-align: center;
-        }
-        .stat-n {
-          font-family: var(--serif);
-          font-size: 36px;
-          color: var(--accent);
-          line-height: 1;
-        }
-        .stat-l {
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.15em;
-          text-transform: uppercase;
-          color: var(--text-muted);
-          margin-top: 10px;
-        }
+        .main-content { width: 100%; min-width: 0; }
 
         /* ── SECTION ── */
-        .section { padding: 120px 40px; max-width: 1100px; margin: 0 auto; }
-        @media(max-width:600px){ .section{ padding: 80px 20px; } }
+        .section { padding: 100px 8%; border-bottom: 1px solid var(--border); }
 
         .sec-label {
           font-size: 11px;
           font-weight: 700;
-          letter-spacing: 0.25em;
+          letter-spacing: 0.14em;
           text-transform: uppercase;
-          color: var(--accent);
-          margin-bottom: 16px;
-        }
-        .sec-title {
-          font-family: var(--serif);
-          font-size: clamp(36px, 5vw, 56px);
-          font-weight: 400;
-          letter-spacing: -0.025em;
-          color: var(--text);
-          margin-bottom: 64px;
-          line-height: 1.1;
+          color: var(--text-faint);
+          margin-bottom: 20px;
         }
 
-        /* ── TEAM ── */
-        .tabs {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-          margin-bottom: 48px;
+        /* ── HERO ── */
+        .hero-title {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: clamp(2.8rem, 10vw, 7.5rem);
+          font-weight: 700;
+          letter-spacing: -0.04em;
+          line-height: 0.9;
+          margin-bottom: 40px;
+          color: var(--text);
         }
-        .tab {
-          padding: 10px 22px;
-          border-radius: 8px;
-          font-size: 13px;
-          font-weight: 500;
-          font-family: var(--sora);
-          letter-spacing: 0.025em;
-          border: 1px solid var(--bd);
-          background: none;
+        .hero-desc {
+          max-width: 600px;
+          font-size: 17px;
+          color: var(--text-secondary);
+          line-height: 1.8;
+          margin-bottom: 60px;
+        }
+
+        .stats-row {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          border-top: 1px solid var(--border);
+          border-left: 1px solid var(--border);
+        }
+        .stat-cell {
+          padding: 32px 24px;
+          border-right: 1px solid var(--border);
+          border-bottom: 1px solid var(--border);
+        }
+        .stat-n {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: 36px;
+          font-weight: 700;
+          letter-spacing: -0.04em;
+          line-height: 1;
+        }
+        .stat-l {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.15em;
           color: var(--text-muted);
-          cursor: pointer;
-          transition: all 0.25s ease;
-        }
-        .tab:hover { 
-          border-color: var(--accent);
-          color: var(--accent);
-          background: rgba(255,255,255,0.02);
-        }
-        .tab.on { 
-          background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 100%);
-          border-color: var(--accent);
-          color: var(--bg);
+          margin-top: 8px;
           font-weight: 600;
         }
 
-        .tcard {
-          display: grid;
-          grid-template-columns: 1fr;
-          border: 1px solid var(--bd);
-          background: var(--s1);
+        /* ── TEAM PHOTO ── */
+        .team-photo-section {
+          position: relative;
+          width: 100%;
+          height: 80vh;
           overflow: hidden;
-          border-radius: 12px;
+          border-bottom: 1px solid var(--border);
         }
-        @media(max-width:900px){
-          .tcard { grid-template-columns: 1fr; }
+        .team-photo-img { width: 100%; height: 100%; object-fit: cover; object-position: center 35%; }
+        .team-photo-overlay {
+          position: absolute; inset: 0;
+          background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.85) 100%);
         }
-        @media(max-width:600px){
-          .tcard { grid-template-columns: 1fr; }
-          .tcard-l { border-right: none !important; border-bottom: 1px solid var(--bd); }
-          .idx { display: none !important; }
+        .team-photo-caption {
+          position: absolute; bottom: 0; left: 0; right: 0;
+          padding: 60px 8%;
+          display: flex; justify-content: space-between; align-items: flex-end;
+        }
+        .team-photo-title {
+          font-family: 'Space Grotesk', sans-serif;
+          font-size: clamp(2rem, 5vw, 4.5rem);
+          font-weight: 700; color: #fff; line-height: 1;
         }
 
-        .tcard-l {
-          padding: 60px 56px;
-          border-right: none;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-          gap: 32px;
-          background: linear-gradient(135deg, var(--s1) 0%, rgba(255,255,255,0.02) 100%);
-        }
-        @media(max-width:900px){ .tcard-l{ padding: 48px 40px; gap: 28px; } }
-        @media(max-width:600px){ .tcard-l{ padding: 36px 28px; gap: 24px; } }
+        /* ── TEAM DETAIL ── */
+        .team-container { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
+        .member-info { padding: 60px 10%; display: flex; flex-direction: column; justify-content: space-between; gap: 40px; }
+        .member-nav { border-left: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; }
 
-        .avi {
-          width: 240px; height: 240px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: var(--serif);
-          font-size: 48px;
-          letter-spacing: 0.01em;
-          flex-shrink: 0;
-          border: 2px solid var(--accent);
-          object-fit: cover;
-          overflow: hidden;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        .nav-item {
+          padding: 30px 40px; border-bottom: 1px solid var(--border);
+          cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+          font-weight: 600; font-size: 14px; color: var(--text-secondary);
         }
-        @media(max-width:900px){ .avi{ width: 180px; height: 180px; font-size: 36px; } }
-        @media(max-width:600px){ .avi{ width: 140px; height: 140px; font-size: 28px; } }
-        .m-name {
-          font-family: var(--serif);
-          font-size: 32px;
-          font-weight: 400;
-          letter-spacing: -0.01em;
-          color: var(--text);
-          line-height: 1.2;
-        }
-        .m-role {
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.15em;
-          text-transform: uppercase;
-          color: var(--accent);
-          margin-top: 2px;
-        }
-        @media(max-width:600px){ .m-name{ font-size: 24px; } }
-        .m-links { margin-top: 4px; width: 100%; display: flex; flex-direction: column; gap: 1px; }
-        .m-link {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 14px 0;
-          border-bottom: 1px solid var(--bd);
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: 0.15em;
-          text-transform: uppercase;
-          color: var(--text-muted);
-          text-decoration: none;
-          transition: all 0.25s;
-        }
-        .m-link:last-child { border-bottom: none; }
-        .m-link:hover { color: var(--accent); }
+        .nav-item.active { background: #000; color: #fff; }
+        .nav-item-sub { font-size: 10px; opacity: 0.5; font-family: monospace; }
 
-        .tcard-r {
-          padding: 56px 60px;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-start;
-          gap: 40px;
-          background: rgba(16, 16, 16, 0.3);
-        }
-        @media(max-width:900px){ .tcard-r{ padding: 40px 48px; gap: 36px; } }
-        @media(max-width:600px){ .tcard-r{ padding: 32px 28px; gap: 32px; } }
+        .specs-box { padding: 40px; flex: 1; }
+        .specs-title { font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px;}
+        .specs-line { font-size: 12px; color: var(--text-secondary); line-height: 2.2; font-family: monospace; }
 
-        .m-desc {
-          font-size: 16px;
-          line-height: 1.8;
-          color: var(--text-muted);
-          font-weight: 300;
-          max-width: 560px;
-          letter-spacing: 0.005em;
+        .tag {
+          font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+          padding: 4px 12px; border: 1px solid var(--border-strong);
+          border-radius: 100px; font-weight: 600; display: inline-block;
         }
-        @media(max-width:600px){ .m-desc{ font-size: 14px; line-height: 1.7; } }
-        .idx {
-          font-family: var(--serif);
-          font-size: 72px;
-          color: var(--dim);
-          line-height: 1;
-          text-align: center;
-          margin-top: auto;
-          padding-top: 32px;
-          border-top: 1px solid var(--bd);
-          font-weight: 300;
-        }
-        @media(max-width:600px){ .idx{ font-size: 48px; } }
+
+        .id-large { font-family: 'Space Grotesk', sans-serif; font-size: 120px; font-weight: 700; color: #f0f0f0; line-height: 0.8; margin-bottom: 20px; letter-spacing: -0.05em; }
+        .member-name { font-family: 'Space Grotesk', sans-serif; font-size: 50px; font-weight: 700; margin-bottom: 20px; }
+        .member-bio { font-size: 16px; color: var(--text-secondary); line-height: 1.8; max-width: 480px; }
+
+        .skills-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; }
+        .member-links { display: flex; gap: 10px; flex-wrap: wrap; }
+
+        .btn-black { background: #000; color: #fff; padding: 14px 28px; text-decoration: none; font-size: 12px; font-weight: 700; }
+        .btn-outline { background: none; border: 1px solid var(--border-strong); color: var(--text); padding: 13px 22px; text-decoration: none; font-size: 12px; font-weight: 700; }
+        .btn-outline:hover { background: #000; color: #fff; border-color: #000; }
 
         /* ── FEATURES ── */
-        .feat-grid {
-          display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 1px;
-          background: var(--bd);
-          border: 1px solid var(--bd);
-          border-radius: 12px;
-          overflow: hidden;
-        }
-        @media(max-width:900px){ .feat-grid{ grid-template-columns: repeat(3,1fr); } }
-        @media(max-width:560px){ .feat-grid{ grid-template-columns: 1fr 1fr; } }
+        .feat-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+        .feat-cell { padding: 40px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); position: relative; }
+        .feat-id { font-size: 10px; font-weight: 700; color: var(--text-faint); margin-bottom: 15px; font-family: monospace; }
+        .feat-label { font-family: 'Space Grotesk', sans-serif; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+        .feat-desc { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
+        .feat-new { position: absolute; top: 15px; right: 15px; font-size: 9px; font-weight: 700; background: #000; color: #fff; padding: 2px 8px; }
 
-        .feat {
-          background: var(--s1);
-          padding: 40px 32px;
-          min-height: 240px;
-          display: flex;
-          flex-direction: column;
-          position: relative;
-          overflow: hidden;
-          cursor: default;
-          transition: all 0.3s ease;
-          border-radius: 0;
-        }
-        .feat:hover { 
-          background: linear-gradient(135deg, var(--s1) 0%, rgba(255,255,255,0.04) 100%);
+        /* ── RESPONSIVE ── */
+        @media (max-width: 1024px) {
+          .stats-row { grid-template-columns: repeat(3, 1fr); }
+          .team-container { grid-template-columns: 1fr; }
+          .member-nav { border-left: none; border-top: 1px solid var(--border); }
+          .feat-grid { grid-template-columns: repeat(2, 1fr); }
         }
 
-        .feat-n {
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.2em;
-          text-transform: uppercase;
-          color: var(--accent);
-          margin-bottom: 24px;
-        }
-        .feat-t {
-          font-family: var(--serif);
-          font-size: 18px;
-          font-weight: 400;
-          color: var(--text);
-          line-height: 1.3;
-          margin-bottom: 16px;
-          letter-spacing: -0.015em;
-        }
-        .feat-d {
-          font-size: 13px;
-          line-height: 1.75;
-          color: var(--text-muted);
-          font-weight: 300;
-          opacity: 0;
-          transform: translateY(6px);
-          transition: opacity 0.28s ease, transform 0.28s ease;
-          letter-spacing: 0.005em;
-        }
-        .feat:hover .feat-d { opacity: 1; transform: translateY(0); }
-
-        .feat-bar {
-          position: absolute;
-          bottom: 0; left: 0;
-          height: 2px;
-          width: 0;
-          background: linear-gradient(90deg, var(--accent) 0%, var(--accent-secondary) 100%);
-          transition: width 0.4s cubic-bezier(0.16,1,0.3,1);
-        }
-        .feat:hover .feat-bar { width: 100%; }
-
-        /* ── PHILOSOPHY ── */
-        .phil-inner {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 96px;
-          align-items: center;
-          border: 1px solid var(--bd);
-          background: linear-gradient(135deg, var(--s1) 0%, rgba(255,255,255,0.01) 100%);
-          padding: 80px 80px;
-          border-radius: 12px;
-        }
-        @media(max-width:780px){
-          .phil-inner { grid-template-columns: 1fr; gap: 48px; padding: 52px 40px; }
-        }
-        @media(max-width:600px){ .phil-inner{ padding: 40px 28px; gap: 40px; } }
-
-        .phil-q {
-          font-family: var(--serif);
-          font-size: clamp(28px, 4vw, 48px);
-          font-weight: 400;
-          font-style: italic;
-          line-height: 1.3;
-          letter-spacing: -0.025em;
-          color: var(--text);
-        }
-        .phil-q span { color: var(--accent); opacity: 0.6; }
-
-        .phil-b {
-          font-size: 15px;
-          line-height: 1.85;
-          color: var(--text-muted);
-          font-weight: 300;
-          letter-spacing: 0.005em;
-        }
-        .phil-a {
-          margin-top: 32px;
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 0.2em;
-          text-transform: uppercase;
-          color: var(--accent);
+        @media (max-width: 768px) {
+          .section { padding: 48px 5%; }
+          .hero-title { font-size: clamp(2rem, 12vw, 3.5rem); }
+          .stats-row { grid-template-columns: repeat(2, 1fr); }
+          .stat-cell { padding: 20px 16px; }
+          .stat-n { font-size: 28px; }
+          .team-photo-section { height: 55vw; min-height: 260px; }
+          .team-photo-caption { flex-direction: column; align-items: flex-start; gap: 12px; padding: 32px 5%; }
+          .team-photo-title { font-size: clamp(1.4rem, 6vw, 2.5rem); }
+          .member-info { padding: 32px 5%; gap: 28px; }
+          .id-large { font-size: clamp(48px, 18vw, 90px); }
+          .member-name { font-size: clamp(1.6rem, 7vw, 2.8rem); }
+          .member-bio { font-size: 15px; }
+          .nav-item { padding: 20px 24px; font-size: 13px; }
+          .specs-box { padding: 24px; }
+          .feat-grid { grid-template-columns: 1fr; }
+          .feat-cell { padding: 28px 20px; }
+          .member-links { flex-direction: column; }
+          .btn-black, .btn-outline { width: 100%; text-align: center; display: block; }
+          .about-footer { flex-direction: column; gap: 8px; }
         }
 
-        /* ── FOOTER ── */
-        .footer {
-          border-top: 1px solid var(--bd);
-          padding: 40px 40px;
-          max-width: 1100px;
-          margin: 0 auto;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 24px;
+        @media (max-width: 480px) {
+          .section { padding: 36px 4%; }
+          .stats-row { grid-template-columns: repeat(2, 1fr); }
+          .stat-cell { padding: 16px 12px; }
+          .stat-n { font-size: 24px; }
+          .hero-desc { font-size: 15px; }
+          .top-nav { padding: 0 4%; }
+          .nav-status { display: none; }
         }
-        @media(max-width:600px){ .footer{ padding: 28px 20px; flex-direction:column; align-items:flex-start; gap: 16px; } }
-
-        .footer-brand {
-          font-family: var(--serif);
-          font-size: 16px;
-          color: var(--text-muted);
-        }
-
-        /* ── ARROW SVG ── */
-        .arr { opacity: 0.35; transition: opacity 0.25s ease; }
-        .m-link:hover .arr { opacity: 1; }
       `}</style>
 
-      <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
+      <div className="wrapper" style={{ display: 'block' }}>
+        
+        {/* TOP NAV */}
+        <nav className="top-nav">
+          <div className="nav-logo">S.</div>
+          <div className="nav-status">ESTABLISHED // 2024 — STATUS: OPERATIONAL</div>
+        </nav>
 
-        {/* HERO */}
-        <section className="hero">
-          <div>
-            <p className="eyebrow fu1">About</p>
-            <h1 className="hero-title fu2">
-              Built to share.<br />
-              <em>Nothing more.</em>
+        <main className="main-content">
+
+          {/* HERO */}
+          <section className="section">
+            <div className="sec-label">[ 01 // OVERVIEW ]</div>
+            <h1 className="hero-title">
+              P2P SHARING.<br />ENGINEERED TO<br />BE INVISIBLE.
             </h1>
-          </div>
-          <div className="fu3">
             <p className="hero-desc">
-              We're four engineers and a designer who got tired of file-sharing tools that asked too much. No sign-ups, no servers holding your data — just a direct line between two people.
+              No cloud storage. No intermediaries. SendAnything creates a direct, 
+              encrypted tunnel between devices. Your data never touches our servers — 
+              and now, live real-time text collaboration ships too.
             </p>
             <div className="stats-row">
-              <div className="stat">
-                <div className="stat-n">4</div>
-                <div className="stat-l">People</div>
-              </div>
-              <div className="stat">
-                <div className="stat-n">0</div>
-                <div className="stat-l">Data stored</div>
-              </div>
-              <div className="stat">
-                <div className="stat-n">&lt;3s</div>
-                <div className="stat-l">To connect</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <div style={{ height: "1px", background: "var(--bd)", maxWidth: "1100px", margin: "0 auto" }}></div>
-
-        {/* TEAM */}
-        <div className="section fu4">
-          <p className="sec-label">The team</p>
-          <h2 className="sec-title">Who made this</h2>
-
-          <div className="tabs">
-            {roles.map(r => (
-              <button key={r.key} className={`tab${selectedRole === r.key ? " on" : ""}`} onClick={() => setSelectedRole(r.key)}>
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="tcard card-anim" key={selectedRole}>
-            <div className="tcard-l">
-              {p.image ? (
-                <img src={p.image} alt={p.name} className="avi" style={{ border: `2px solid ${p.color}40` }} />
-              ) : (
-                <div className="avi" style={{ background: p.color + "15", color: p.color, border: `1px solid ${p.color}28` }}>
-                  {p.initials}
+              {[
+                ["4", "ENGINEERS"],
+                ["0", "DATA STORED"],
+                ["<3s", "TO CONNECT"],
+                ["6", "CHAR KEY"],
+                ["∞", "FILE SIZE*"],
+                ["100%", "P2P"],
+              ].map(([n, l]) => (
+                <div className="stat-cell" key={l}>
+                  <div className="stat-n">{n}</div>
+                  <div className="stat-l">{l}</div>
                 </div>
-              )}
-              <div>
-                <div className="m-name">{p.name}</div>
-                <div className="m-role">{p.role}</div>
+              ))}
+            </div>
+          </section>
+
+          {/* TEAM PHOTO */}
+          <div className="team-photo-section">
+            <img className="team-photo-img" src="https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1800&q=85&fit=crop" alt="Team" />
+            <div className="team-photo-overlay" />
+            <div className="team-photo-caption">
+              <div className="team-photo-title">THE PEOPLE<br />BEHIND THE CORE.</div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, color: '#999', marginBottom: 8 }}>SENDANYTHING // 2024</div>
+                <div style={{ fontSize: '40px', fontWeight: 700, color: '#fff', fontFamily: 'Space Grotesk' }}>04</div>
               </div>
-              <div style={{ width: "100%", height: "1px", background: "var(--bd)" }}></div>
-              <div className="m-links">
-                {[["Portfolio", p.portfolio], ["GitHub", p.github], ["LinkedIn", p.linkedin]].map(([label, href]) => (
-                  <a key={label} href={href} target="_blank" rel="noopener noreferrer" className="m-link">
-                    {label}
-                    <svg className="arr" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
+            </div>
+          </div>
+
+          {/* TEAM DETAIL */}
+          <section className="section" style={{ padding: 0 }}>
+            <div style={{ padding: "60px 8% 20px" }}>
+              <div className="sec-label">[ 02 // MEET THE TEAM ]</div>
+            </div>
+            <div className="team-container">
+              <div className="member-info">
+                <div>
+                  <div className="id-large">{p.id}</div>
+                  <div style={{ marginBottom: 16 }}>
+                    <span className="tag" style={{ background: "#000", color: "#fff", border: "none", borderRadius: 0 }}>{p.role}</span>
+                  </div>
+                  <h2 className="member-name">{p.name}</h2>
+                  <p className="member-bio">{p.bio}</p>
+                </div>
+                <div>
+                  <div className="skills-row">
+                    {p.skills.map(s => <span key={s} className="tag">{s}</span>)}
+                  </div>
+                  <div className="member-links">
+                    <a href={p.link} className="btn-black" target="_blank">PORTFOLIO</a>
+                    <a href={p.github} className="btn-outline" target="_blank">GITHUB</a>
+                    <a href={p.linkedin} className="btn-outline" target="_blank">LINKEDIN</a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="member-nav">
+                {Object.keys(team).map(key => (
+                  <div key={key} className={`nav-item ${selectedRole === key ? "active" : ""}`} onClick={() => setSelectedRole(key)}>
+                    <span>{team[key].name}</span>
+                    <span className="nav-item-sub">{team[key].id}</span>
+                  </div>
                 ))}
+                <div className="specs-box">
+                  <div className="specs-title">TECHNICAL PROTOCOLS</div>
+                  <div className="specs-line">
+                    CORE: WebRTC / DTLS / SCTP<br />
+                    SECURITY: AES-GCM 256-BIT<br />
+                    COLLAB: WebSocket Secure (WSS)<br />
+                    ARCHITECTURE: SERVERLESS MESH
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="tcard-r">
-              <p className="m-desc">{p.description}</p>
-              <div className="idx">0{roles.findIndex(r => r.key === selectedRole) + 1}</div>
+          </section>
+
+          {/* FEATURES */}
+          <section className="section">
+            <div className="sec-label" style={{ marginBottom: 40 }}>[ 03 // PRODUCT CAPABILITIES ]</div>
+            <div className="feat-grid">
+              {features.map(f => (
+                <div className="feat-cell" key={f.id}>
+                  {f.isNew && <span className="feat-new">NEW</span>}
+                  <div className="feat-id">{f.id}</div>
+                  <div className="feat-label">{f.label}</div>
+                  <div className="feat-desc">{f.desc}</div>
+                </div>
+              ))}
             </div>
-          </div>
-        </div>
+          </section>
 
-        <div style={{ height: "1px", background: "var(--bd)", maxWidth: "1100px", margin: "0 auto" }}></div>
+          {/* FOOTER */}
+          <footer className="about-footer" style={{ padding: "48px 8%", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>SENDANYTHING.ONLINE</div>
+            <div style={{ fontSize: 11, color: "#999" }}>© 2024 — ALL RIGHTS RESERVED.</div>
+          </footer>
 
-        {/* WHAT WE BUILT */}
-        <div className="section">
-          <p className="sec-label">Product</p>
-          <h2 className="sec-title">What we built</h2>
-
-          <div className="feat-grid">
-            {features.map(f => (
-              <div key={f.id} className="feat" onMouseEnter={() => setHoveredFeature(f.id)} onMouseLeave={() => setHoveredFeature(null)}>
-                <span className="feat-n">0{f.id}</span>
-                <span className="feat-t">{f.label}</span>
-                <span className="feat-d">{f.detail}</span>
-                <div className="feat-bar"></div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ height: "1px", background: "var(--bd)", maxWidth: "1100px", margin: "0 auto" }}></div>
-
-        {/* PHILOSOPHY */}
-        <div className="section">
-          <div className="phil-inner">
-            <div>
-              <p className="sec-label" style={{ marginBottom: "28px" }}>Philosophy</p>
-              <blockquote className="phil-q">
-                <span>"</span>The best tool is the one you never have to think about.<span>"</span>
-              </blockquote>
-            </div>
-            <div>
-              <p className="phil-b">
-                Every decision we make traces back to one question: does this get out of the way?<br /><br />
-                We don't add features because we can. We build for the moment — the file you want to send right now, to the person in front of you, without friction.
-              </p>
-              <p className="phil-a">— SendAnything, 2024</p>
-            </div>
-          </div>
-        </div>
-
-        {/* FOOTER */}
-        <footer style={{ borderTop: "1px solid var(--bd)" }}>
-          <div className="footer">
-            <span className="footer-brand">SendAnything</span>
-          </div>
-        </footer>
-
+        </main>
       </div>
     </>
   );
