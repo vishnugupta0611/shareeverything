@@ -1,6 +1,6 @@
 "use client";
 import { Suspense, useRef, useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import toast from "react-hot-toast";
 import { MdSend, MdDownload, MdCode, MdClose, MdAdd, MdInsertDriveFile, MdImage, MdVideoFile, MdPictureAsPdf, MdPause, MdPlayArrow, MdCancel, MdFolder } from "react-icons/md";
 import { P2PConnection, BackendAPI, SocketSignaling } from "../../lib/webrtc";
@@ -19,6 +19,7 @@ export default function ShareDataPage() {
 
 function ShareDataPageContent() {
     const searchParams = useSearchParams();
+    const router = useRouter();
     const [sessionKey, setSessionKey] = useState("");
     const [connectionStatus, setConnectionStatus] = useState("disconnected");
     const [p2pConnection, setP2pConnection] = useState(null);
@@ -27,16 +28,16 @@ function ShareDataPageContent() {
     const [codeInput, setCodeInput] = useState("");
     const [codeLanguage, setCodeLanguage] = useState("javascript");
     const [receivedFiles, setReceivedFiles] = useState([]);
-    const [folders, setFolders] = useState({}); // key: folderName, value: { files[], totalCount, expanded }
-    const [fileTransfers, setFileTransfers] = useState({}); // key: fileId, value: progress info
+    const [folders, setFolders] = useState({});
+    const [fileTransfers, setFileTransfers] = useState({});
     const [showCodeModal, setShowCodeModal] = useState(false);
     const [mounted, setMounted] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [modalDragOver, setModalDragOver] = useState(false);
     const [plusHovered, setPlusHovered] = useState(false);
-    const [groupMode, setGroupMode] = useState(false);
-    const [isOwner, setIsOwner] = useState(false); // first joiner is owner
+    const [countdown, setCountdown] = useState(null); // display string e.g. "45:00"
+    const [countdownWarning, setCountdownWarning] = useState(false);
 
     const connectionStatusRef = useRef("disconnected");
     // Keep ref in sync with state for use in callbacks
@@ -51,6 +52,68 @@ function ShareDataPageContent() {
     const signalingRef = useRef(null); // store signaling for cleanup
 
     const joinSession = useCallback(async (key) => {
+        // ── Reuse existing live connection if navigating back ──
+        const live = window.__liveSession;
+        if (live && live.key === key && live.connection && live.signaling) {
+            signalingRef.current = live.signaling;
+            setP2pConnection(live.connection);
+            // Restore connection status from the live data channel state
+            const dc = live.connection.dataChannel;
+            const status = dc?.readyState === 'open' ? 'connected' : 'connecting';
+            setConnectionStatus(status);
+            // Re-wire callbacks so new React state setters are used
+            live.connection.onConnectionStateChange((s) => {
+                setConnectionStatus(s);
+                if (s === 'connected') { toast.dismiss(); toast.success("Connected — ready to share", { id: 'conn-status' }); }
+                else if (s === 'disconnected') toast.error("Peer disconnected", { id: 'conn-status' });
+                else if (s === 'failed') toast.error("Connection failed", { id: 'conn-status' });
+            });
+            live.connection.onMessageReceived((data) => {
+                if (data.type === 'message' || data.type === 'code') {
+                    setMessages(prev => [...prev, { ...data, dir: 'received', messageType: data.type, timestamp: data.timestamp || Date.now() }]);
+                }
+            });
+            live.connection.onFileReceived((file) => {
+                const url = URL.createObjectURL(new Blob([file.data], { type: file.type }));
+                const entry = { name: file.name, type: file.type, size: file.size, url, relativePath: file.relativePath, timestamp: Date.now(), dir: 'received' };
+                if (file.folderName) {
+                    setFolders(prev => {
+                        const existing = prev[file.folderName] || { files: [], totalCount: 0, expanded: false, timestamp: Date.now(), dir: 'received' };
+                        const fileIdx = existing.files.findIndex(f => f.relativePath === file.relativePath);
+                        const updatedFiles = fileIdx !== -1
+                            ? existing.files.map((f, i) => i === fileIdx ? { ...f, url, done: true } : f)
+                            : [...existing.files, { ...entry, done: true }];
+                        return { ...prev, [file.folderName]: { ...existing, files: updatedFiles } };
+                    });
+                } else {
+                    setReceivedFiles(prev => {
+                        const idx = prev.findIndex(f => f.name === file.name && f.placeholder);
+                        if (idx !== -1) { const next = [...prev]; next[idx] = entry; return next; }
+                        return [...prev, entry];
+                    });
+                }
+                toast.success(`Received: ${file.name}`);
+            });
+            live.connection.onTransferProgressChange((progress) => {
+                const k = progress.fileName;
+                const now = Date.now();
+                if (progress.progress === 0 || !transferStartTimes.current[k]) transferStartTimes.current[k] = { startTime: now };
+                const lastUpdate = lastProgressUpdate.current[k] || 0;
+                const isDone = progress.progress >= 100 || progress.type === 'cancelled';
+                if (!isDone && now - lastUpdate < 200) return;
+                lastProgressUpdate.current[k] = now;
+                const { startTime } = transferStartTimes.current[k];
+                const elapsed = (now - startTime) / 1000;
+                setFileTransfers(prev => ({ ...prev, [k]: { progress: progress.progress, type: progress.type, paused: progress.type === 'paused', cancelled: progress.type === 'cancelled', totalSize: progress.totalSize ?? prev[k]?.totalSize ?? 0, receivedSize: progress.receivedSize ?? 0, elapsed, done: isDone } }));
+                if (isDone) {
+                    delete transferStartTimes.current[k];
+                    delete lastProgressUpdate.current[k];
+                    setTimeout(() => setFileTransfers(prev => { const next = { ...prev }; delete next[k]; return next; }), 3000);
+                }
+            });
+            return; // skip full re-join
+        }
+
         setConnectionStatus("connecting");
         try {
             const backendAPI = new BackendAPI();
@@ -163,23 +226,7 @@ function ShareDataPageContent() {
                 }
             });
             socketSignaling.onSessionJoinedCallback((data) => {
-                // First joiner is owner
-                setIsOwner(true);
-                setGroupMode(data.groupMode || false);
-                // In group mode, connect to all existing peers
-                if (data.groupMode && data.existingPeers?.length > 0) {
-                    data.existingPeers.forEach(async (peerId) => {
-                        try {
-                            const offer = await connection.createOffer();
-                            if (offer) socketSignaling.sendSignal(offer, peerId);
-                        } catch (e) { console.error(e); }
-                    });
-                }
-            });
-
-            socketSignaling.onGroupModeChanged(({ enabled }) => {
-                setGroupMode(enabled);
-                toast(enabled ? 'Group mode enabled — anyone with the link can join' : 'Group mode disabled', { id: 'group-mode' });
+                // no-op — group mode removed
             });
 
             socketSignaling.onSignalReceived(async (data) => {
@@ -199,6 +246,8 @@ function ShareDataPageContent() {
                 } catch (e) { console.error(e); }
             });
             connection.onIceCandidate((candidate) => socketSignaling.sendSignal({ type: 'ice-candidate', candidate }));
+            // Persist live session so navigating back reuses it
+            window.__liveSession = { key, connection, signaling: socketSignaling };
             toast.loading("Waiting for peer...", { id: 'conn-status' });
         } catch (error) {
             console.error(error);
@@ -215,13 +264,54 @@ function ShareDataPageContent() {
         if (!mounted) return;
         const key = searchParams.get('key');
         if (key) { setSessionKey(key); joinSession(key); }
-        // Cleanup on unmount — disconnect socket and close WebRTC
+        // Cleanup on unmount — only disconnect if session was ended, not just navigated away
         return () => {
-            signalingRef.current?.disconnect();
-        };
-    }, [mounted]); // only run once when mounted flips to true
+            // If window.__liveSession still holds this key, user just navigated away — keep alive
+            if (window.__liveSession?.key !== searchParams.get('key')) {
+                signalingRef.current?.disconnect();
+            }
+        };    }, [mounted]); // only run once when mounted flips to true
 
     useEffect(() => { feedEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, receivedFiles]);
+
+    // ── Countdown timer ──────────────────────────────────────────
+    useEffect(() => {
+        if (!mounted) return;
+        const raw = sessionStorage.getItem('sessionExpiresAt');
+        if (!raw) return;
+        const ts = Date.parse(raw);
+        if (isNaN(ts) || ts <= Date.now()) return;
+
+        const tick = () => {
+            const remaining = ts - Date.now();
+            if (remaining <= 0) {
+                setCountdown(null);
+                toast('Session expired', { icon: '⏰' });
+                router.push('/');
+                return;
+            }
+            const h = Math.floor(remaining / 3_600_000);
+            const m = Math.floor((remaining % 3_600_000) / 60_000);
+            const s = Math.floor((remaining % 60_000) / 1_000);
+            const mm = String(m).padStart(2, '0');
+            const ss = String(s).padStart(2, '0');
+            setCountdown(h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`);
+            setCountdownWarning(remaining < 300_000); // amber < 5 min
+        };
+
+        tick();
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+    }, [mounted, router]);
+
+    // ── Auto-send pending files dropped on home screen ───────────
+    useEffect(() => {
+        if (connectionStatus !== 'connected') return;
+        const pending = window.__pendingFiles;
+        if (!pending || pending.length === 0) return;
+        window.__pendingFiles = [];
+        pending.forEach(file => handleFileShare(file));
+    }, [connectionStatus]);
 
     if (!mounted) return null;
 
@@ -425,31 +515,28 @@ function ShareDataPageContent() {
                     <span className="text-sm text-gray-500">{statusConfig.label}</span>
                 </div>
                 <div className="flex items-center gap-3">
+                    {/* Countdown timer */}
+                    {countdown && (
+                        <div
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono font-semibold"
+                            style={{
+                                background: countdownWarning ? 'rgba(251,191,36,0.1)' : 'rgba(255,255,255,0.04)',
+                                border: countdownWarning ? '1px solid rgba(251,191,36,0.3)' : '1px solid rgba(255,255,255,0.08)',
+                                color: countdownWarning ? '#fbbf24' : 'rgba(255,255,255,0.4)',
+                            }}
+                            title="Session time remaining"
+                        >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                            {countdown}
+                        </div>
+                    )}
                     {sessionKey && (
                         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.08]">
                             <span className="text-[11px] text-gray-600 uppercase tracking-wider">Session</span>
                             <span className="text-xs font-mono font-bold text-blue-400 tracking-[0.2em]">{sessionKey}</span>
                         </div>
-                    )}
-                    {/* Group mode toggle — only owner sees it */}
-                    {isOwner && (
-                        <button
-                            onClick={() => {
-                                const next = !groupMode;
-                                setGroupMode(next);
-                                signalingRef.current?.toggleGroupMode(sessionKey, next);
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200"
-                            style={{
-                                background: groupMode ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.04)',
-                                border: groupMode ? '1px solid rgba(52,211,153,0.25)' : '1px solid rgba(255,255,255,0.08)',
-                                color: groupMode ? '#6ee7b7' : 'rgba(255,255,255,0.35)',
-                            }}
-                            title="Toggle group mode — allow multiple people to join"
-                        >
-                            <span>{groupMode ? '⬡' : '⬡'}</span>
-                            <span className="hidden sm:inline">{groupMode ? 'Group on' : 'Group off'}</span>
-                        </button>
                     )}
                 </div>
             </div>

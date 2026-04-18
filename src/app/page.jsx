@@ -6,30 +6,77 @@ import { BackendAPI, SocketSignaling } from "../lib/webrtc";
 import QRCode from "qrcode";
 import toast from "react-hot-toast";
 
-const floatingImages = []; // kept for future use
+const DURATION_OPTIONS = [
+  { label: "5 min",  seconds: 300 },
+  { label: "10 min", seconds: 600 },
+  { label: "30 min", seconds: 1800 },
+  { label: "1 hr",   seconds: 3600 },
+  { label: "2 hr",   seconds: 7200 },
+];
+
+function DurationPicker({ selected, onChange }) {
+  return (
+    <div className="flex flex-col items-center gap-3 w-full">
+      <p className="text-white/40 text-xs tracking-widest uppercase">Session duration</p>
+      <div className="flex flex-wrap justify-center gap-2">
+        {DURATION_OPTIONS.map((opt) => (
+          <button
+            key={opt.seconds}
+            onClick={() => onChange(opt.seconds)}
+            className="px-4 py-1.5 rounded-full text-xs font-medium transition-all duration-200"
+            style={{
+              background: selected === opt.seconds ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)",
+              border: selected === opt.seconds ? "1px solid rgba(255,255,255,0.4)" : "1px solid rgba(255,255,255,0.1)",
+              color: selected === opt.seconds ? "#fff" : "rgba(255,255,255,0.4)",
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [mounted, setMounted]       = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [session, setSession]       = useState(null);
-  const [copied, setCopied]         = useState(false);
-  const [view, setView]             = useState("buttons"); // "buttons" | "qr" | "receive"
-  const [joinKey, setJoinKey]       = useState("");
-  const [isJoining, setIsJoining]   = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
-  const heroRef = useRef(null);
+  const [mounted, setMounted]             = useState(false);
+  const [isDragOver, setIsDragOver]       = useState(false);
+  const [isCreating, setIsCreating]       = useState(false);
+  const [session, setSession]             = useState(null);
+  const [copied, setCopied]               = useState(false);
+  const [view, setView]                   = useState("buttons");
+  const [joinKey, setJoinKey]             = useState("");
+  const [isJoining, setIsJoining]         = useState(false);
+  const [showScanner, setShowScanner]     = useState(false);
+  const [duration, setDuration]           = useState(3600);
+  const [activeSession, setActiveSession] = useState(null); // { key, expiresAt }
+  const heroRef    = useRef(null);
   const scannerRef = useRef(null);
 
   useEffect(() => { setMounted(true); }, []);
 
+  // On mount: check if there's a live session the user navigated away from
   useEffect(() => {
     if (!mounted) return;
     const sid = searchParams.get("s");
     if (sid && !session) {
       generateQR(sid).then(qrUrl => { setSession({ sessionId: sid, qrUrl }); setView("qr"); });
+      return;
+    }
+    // Check sessionStorage for an active session (user came back to home mid-session)
+    const storedKey = sessionStorage.getItem("activeSessionKey");
+    const storedExpiry = sessionStorage.getItem("sessionExpiresAt");
+    if (storedKey && storedExpiry) {
+      const ts = Date.parse(storedExpiry);
+      if (!isNaN(ts) && ts > Date.now()) {
+        setActiveSession({ key: storedKey, expiresAt: ts });
+      } else {
+        // Expired — clean up
+        sessionStorage.removeItem("activeSessionKey");
+        sessionStorage.removeItem("sessionExpiresAt");
+      }
     }
   }, [mounted]);
 
@@ -41,14 +88,19 @@ function HomeContent() {
     });
   };
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(async (durationSeconds = duration) => {
     if (isCreating || session) return;
     setIsCreating(true);
     try {
       const api = new BackendAPI();
-      const res = await api.createSession();
+      const res = await api.createSession(durationSeconds);
       if (!res.success) throw new Error();
       const sid = res.sessionId;
+      // Store expiresAt for countdown in sharedata page
+      if (res.expiresAt) {
+        sessionStorage.setItem("sessionExpiresAt", res.expiresAt);
+      }
+      sessionStorage.setItem("activeSessionKey", sid);
       const qrUrl = await generateQR(sid);
       window.history.replaceState(null, "", `/?s=${sid}`);
       setSession({ sessionId: sid, qrUrl });
@@ -59,15 +111,20 @@ function HomeContent() {
         router.push(`/sharedata?key=${sid}`);
       });
     } catch {
-      // fallback
+      toast.error("Failed to create session");
     } finally {
       setIsCreating(false);
     }
-  }, [isCreating, session, router]);
+  }, [isCreating, session, router, duration]);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
     setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      // Stash files in window — survives same-tab router.push (no full reload)
+      window.__pendingFiles = files;
+    }
     handleShare();
   }, [handleShare]);
 
@@ -85,6 +142,28 @@ function HomeContent() {
     window.history.replaceState(null, "", "/");
   };
 
+  const endActiveSession = async () => {
+    const key = activeSession?.key;
+    setActiveSession(null);
+    sessionStorage.removeItem("activeSessionKey");
+    sessionStorage.removeItem("sessionExpiresAt");
+    // Tear down the live connection
+    if (window.__liveSession) {
+      window.__liveSession.signaling?.disconnect();
+      window.__liveSession = null;
+    }
+    if (key) {
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || "https://sendanything.onrender.com"}/api/sessions/end`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: key }),
+        });
+      } catch {}
+    }
+    toast.success("Session ended");
+  };
+
   const handleJoin = async (keyOverride) => {
     const key = (typeof keyOverride === "string" ? keyOverride : joinKey).trim().toUpperCase();
     if (!key || key.length !== 6) { toast.error("Enter a 6-character code"); return; }
@@ -93,6 +172,9 @@ function HomeContent() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || "https://sendanything.onrender.com"}/api/sessions/check/${key}`);
       const data = await res.json();
       if (!data.exists) { toast.error("Session not found"); setIsJoining(false); return; }
+      // Store expiresAt if available
+      if (data.expiresAt) sessionStorage.setItem("sessionExpiresAt", data.expiresAt);
+      sessionStorage.setItem("activeSessionKey", key);
       router.push(`/sharedata?key=${key}`);
     } catch {
       toast.error("Failed to join"); setIsJoining(false);
@@ -144,7 +226,8 @@ function HomeContent() {
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={(e) => { if (!heroRef.current?.contains(e.relatedTarget)) setIsDragOver(false); }}
         onDrop={handleDrop}
-      >        {/* Drag overlay */}
+      >
+        {/* Drag overlay */}
         <div className={`absolute inset-0 z-30 pointer-events-none transition-all duration-300 ${isDragOver ? "opacity-100" : "opacity-0"}`}>
           <div className="absolute inset-4 border-2 border-dashed border-white/30 rounded-3xl" />
           <div className="absolute inset-0 flex items-center justify-center">
@@ -152,9 +235,7 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* Floating images removed */}
-
-        {/* Center content — fixed height container so title never moves */}
+        {/* Center content */}
         <div className="relative z-10 text-center px-6 w-full max-w-lg mx-auto flex flex-col items-center justify-center min-h-screen py-20">
 
           <motion.h1
@@ -167,29 +248,33 @@ function HomeContent() {
             Send Anything.
           </motion.h1>
 
-          {/* Buttons → QR → Receive transition */}
           <AnimatePresence mode="wait">
             {view === "buttons" && (
               <motion.div
                 key="buttons"
-                className="flex flex-col sm:flex-row gap-3 justify-center"
+                className="flex flex-col items-center gap-5 w-full"
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12, scale: 0.95 }}
                 transition={{ duration: 0.4 }}
               >
-                <button onClick={handleShare} disabled={isCreating}
-                  className="px-7 py-2.5 bg-white hover:bg-gray-100 text-black font-medium rounded-full transition-all duration-300 hover:scale-[1.03] disabled:opacity-50 text-sm">
-                  {isCreating ? "Creating..." : "Share anything"}
-                </button>
-                <button onClick={() => router.push("/instant")}
-                  className="px-7 py-2.5 bg-white hover:bg-gray-100 text-black font-medium rounded-full transition-all duration-300 hover:scale-[1.03] text-sm">
-                  Share code
-                </button>
-                <button onClick={() => setView("receive")}
-                  className="px-7 py-2.5 bg-white hover:bg-gray-100 text-black font-medium rounded-full transition-all duration-300 hover:scale-[1.03] text-sm">
-                  Receive
-                </button>
+                {/* Duration picker — shown before creating */}
+                <DurationPicker selected={duration} onChange={setDuration} />
+
+                <div className="flex flex-col sm:flex-row gap-3 justify-center mt-1">
+                  <button onClick={() => handleShare()} disabled={isCreating}
+                    className="px-7 py-2.5 bg-white hover:bg-gray-100 text-black font-medium rounded-full transition-all duration-300 hover:scale-[1.03] disabled:opacity-50 text-sm">
+                    {isCreating ? "Creating..." : "Share anything"}
+                  </button>
+                  <button onClick={() => router.push("/instant")}
+                    className="px-7 py-2.5 bg-white hover:bg-gray-100 text-black font-medium rounded-full transition-all duration-300 hover:scale-[1.03] text-sm">
+                    Share code
+                  </button>
+                  <button onClick={() => setView("receive")}
+                    className="px-7 py-2.5 bg-white hover:bg-gray-100 text-black font-medium rounded-full transition-all duration-300 hover:scale-[1.03] text-sm">
+                    Receive
+                  </button>
+                </div>
               </motion.div>
             )}
 
@@ -227,8 +312,8 @@ function HomeContent() {
                 exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.4 }}
               >
-                {/* Code input row */}
-                <div className="flex items-center gap-2 w-full">
+                {/* Code input row — overflow-hidden keeps scanner icon on-screen */}
+                <div className="flex items-center gap-2 w-full overflow-hidden">
                   <input
                     type="text"
                     value={joinKey}
@@ -238,13 +323,13 @@ function HomeContent() {
                     maxLength={6}
                     autoComplete="off"
                     spellCheck={false}
-                    className="flex-1 bg-transparent text-white font-mono text-center text-xl tracking-[0.3em] outline-none placeholder-white/20 py-2.5"
+                    className="flex-1 min-w-0 bg-transparent text-white font-mono text-center text-xl tracking-[0.3em] outline-none placeholder-white/20 py-2.5"
                     style={{ borderBottom: "1px solid rgba(255,255,255,0.2)" }}
                   />
-                  {/* Camera button — subtle */}
+                  {/* Camera button — flex-shrink-0 prevents it from being squeezed off-screen */}
                   <button
                     onClick={showScanner ? stopScanner : startScanner}
-                    className="text-white/30 hover:text-white/60 transition-colors p-1.5"
+                    className="flex-shrink-0 text-white/30 hover:text-white/60 transition-colors p-1.5"
                     title="Scan QR code"
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -261,7 +346,6 @@ function HomeContent() {
                   </div>
                 )}
 
-                {/* Join button */}
                 <button
                   onClick={() => handleJoin()}
                   disabled={isJoining || joinKey.length !== 6}
@@ -276,7 +360,7 @@ function HomeContent() {
           </AnimatePresence>
 
           {view === "buttons" && (
-            <motion.p className="mt-6 text-white/20 text-xs tracking-wider"
+            <motion.p className="mt-4 text-white/20 text-xs tracking-wider"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}>
               or drag & drop anywhere
             </motion.p>
@@ -318,7 +402,7 @@ function HomeContent() {
         <div className="max-w-4xl mx-auto text-center">
           <h3 className="text-3xl md:text-4xl font-bold text-white mb-8">Ready to share?</h3>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <button onClick={handleShare}
+            <button onClick={() => handleShare()}
               className="px-8 py-4 bg-white text-black rounded-full font-bold text-lg hover:bg-gray-100 transition-all duration-300 hover:scale-105">
               Start Sharing
             </button>
@@ -329,6 +413,51 @@ function HomeContent() {
           </div>
         </div>
       </section>
+
+      {/* ── ACTIVE SESSION POPUP ── */}
+      <AnimatePresence>
+        {activeSession && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ duration: 0.25 }}
+            className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 p-4 rounded-2xl"
+            style={{
+              background: "rgba(12,14,22,0.95)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              backdropFilter: "blur(16px)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+              minWidth: "200px",
+            }}
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_2px_rgba(52,211,153,0.5)]" />
+              <span className="text-xs text-white/50 uppercase tracking-wider">Active session</span>
+            </div>
+            <span className="font-mono text-sm font-bold text-blue-400 tracking-[0.2em]">{activeSession.key}</span>
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={() => {
+                  sessionStorage.setItem("activeSessionKey", activeSession.key);
+                  router.push(`/sharedata?key=${activeSession.key}`);
+                }}
+                className="flex-1 py-1.5 rounded-xl text-xs font-medium text-white transition-all duration-200 hover:scale-[1.03]"
+                style={{ background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.25)" }}
+              >
+                Rejoin
+              </button>
+              <button
+                onClick={endActiveSession}
+                className="flex-1 py-1.5 rounded-xl text-xs font-medium text-red-400 transition-all duration-200 hover:scale-[1.03]"
+                style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}
+              >
+                End
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

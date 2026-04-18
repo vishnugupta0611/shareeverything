@@ -553,13 +553,14 @@ export class BackendAPI {
     }
 
     // Create new session
-    async createSession() {
+    async createSession(durationSeconds = 3600) {
         try {
             const response = await fetch(`${this.baseURL}/sessions/create`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                }
+                },
+                body: JSON.stringify({ durationSeconds }),
             });
 
             if (!response.ok) {
@@ -730,18 +731,6 @@ export class SocketSignaling {
 
     onSessionJoinedCallback(callback) {
         this.onSessionJoined = callback;
-    }
-
-    onGroupModeChanged(callback) {
-        if (this.socket) {
-            this.socket.on('group-mode-changed', callback);
-        }
-    }
-
-    toggleGroupMode(sessionId, enabled) {
-        if (this.socket) {
-            this.socket.emit('toggle-group-mode', { sessionId, enabled });
-        }
     }
 
     // Disconnect
